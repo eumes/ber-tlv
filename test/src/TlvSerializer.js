@@ -1,15 +1,21 @@
 var Tlv_1 = require('./Tlv');
 var octet_buffer_1 = require('../node_modules/octet-buffer/dist/octet-buffer');
-var TlvSerializationError = (function () {
-    function TlvSerializationError(name, message) {
+var TlvSerializerSerializeError = (function () {
+    function TlvSerializerSerializeError(name, message) {
         this.name = name;
         this.message = message;
     }
-    TlvSerializationError.errorPayloadToBig = function (tag, requested, maximum) {
-        return new TlvSerializationError('Error while serializing item ' + tag + '"', 'Present length is ' + requested + ', maximum supported ' + maximum);
+    TlvSerializerSerializeError.errorPayloadToBig = function (tag, requested, maximum) {
+        return new TlvSerializerSerializeError('Error while serializing item ' + tag + '"', 'Provided length is ' + requested + ', maximum supported ' + maximum);
     };
-    return TlvSerializationError;
+    return TlvSerializerSerializeError;
 })();
+exports.TlvSerializerSerializeError = TlvSerializerSerializeError;
+var TLV_SERIALIZE_MULTIBYTE_FLAG = 0x80;
+var SERIALIZE_UINT8_MAX = 0xFF;
+var SERIALIZE_UINT16_MAX = 0xFFFF;
+var SERIALIZE_UINT24_MAX = 0xFFFFFF;
+var SERIALIZE_UINT32_MAX = 0xFFFFFFFF;
 var TlvSerializer = (function () {
     function TlvSerializer() {
     }
@@ -54,27 +60,27 @@ var TlvSerializer = (function () {
     };
     TlvSerializer.lengthBufferForLengt = function (tag, length) {
         var octetBuffer = new octet_buffer_1.OctetBuffer(new Buffer(1));
-        if (length < 0x80) {
+        if (length < TLV_SERIALIZE_MULTIBYTE_FLAG) {
             octetBuffer.writeUInt8(length);
         }
-        else if (length <= 0xFF) {
-            octetBuffer.writeUInt8(0x81);
+        else if (length <= SERIALIZE_UINT8_MAX) {
+            octetBuffer.writeUInt8(TLV_SERIALIZE_MULTIBYTE_FLAG | 0x01);
             octetBuffer.writeUInt8(length);
         }
-        else if (length <= 0xFFFF) {
-            octetBuffer.writeUInt8(0x82);
+        else if (length <= SERIALIZE_UINT16_MAX) {
+            octetBuffer.writeUInt8(TLV_SERIALIZE_MULTIBYTE_FLAG | 0x02);
             octetBuffer.writeUInt16(length);
         }
-        else if (length <= 0xFFFFFF) {
-            octetBuffer.writeUInt8(0x83);
+        else if (length <= SERIALIZE_UINT24_MAX) {
+            octetBuffer.writeUInt8(TLV_SERIALIZE_MULTIBYTE_FLAG | 0x03);
             octetBuffer.writeUInt24(length);
         }
-        else if (length <= 0xFFFFFFFF) {
-            octetBuffer.writeUInt8(0x84);
+        else if (length <= SERIALIZE_UINT32_MAX) {
+            octetBuffer.writeUInt8(TLV_SERIALIZE_MULTIBYTE_FLAG | 0x04);
             octetBuffer.writeUInt32(length);
         }
         else {
-            throw TlvSerializationError.errorPayloadToBig(tag, length, 0xFFFFFFFF);
+            throw TlvSerializerSerializeError.errorPayloadToBig(tag, length, SERIALIZE_UINT32_MAX);
         }
         return octetBuffer.backingBuffer;
     };
