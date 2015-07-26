@@ -22,7 +22,7 @@ import { OctetBuffer } from '../node_modules/octet-buffer/dist/octet-buffer';
         serialize(): Buffer;
     }
 
-
+//TODO: extract to TlvSerializer
     class Tlv implements ITlv {
         public tag: string;
         public type: TlvType;
@@ -59,6 +59,7 @@ import { OctetBuffer } from '../node_modules/octet-buffer/dist/octet-buffer';
         }
     }
 
+//TODO: extract to TlvSerializer
     export class TlvFactory {
         static primitiveTlv(tag: Buffer | string, value?: Buffer | string): ITlv {
             var tagBuffer: Buffer = TlvParser.prepareTag(tag);
@@ -162,6 +163,7 @@ import { OctetBuffer } from '../node_modules/octet-buffer/dist/octet-buffer';
         constructor(public result: T, public error: Error) {}
     }
 
+//TODO: extract to TlvSerializer
     class TlvParser {
 
         static prepareTag(tag: Buffer | string): Buffer {
@@ -421,6 +423,7 @@ import { OctetBuffer } from '../node_modules/octet-buffer/dist/octet-buffer';
     }
 
 
+//TODO: extract to TlvSerializer
     class TlvSerializer {
 
         static serializeConstrucedItem(item: ITlv): Buffer {

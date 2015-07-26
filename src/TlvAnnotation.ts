@@ -22,12 +22,13 @@ export enum AnnotationValueFormat {
     HHMMSS,               // Time format
 }
 
+
+//TODO: add support for using this format in the ByteHelper
 /**
 	Pattern:
 
-
 "pattern": "05",			--> '<value>',				'05'
-"bitmask": "0080",			--> '<byte>&<bitmask>',		'2&x80'		-or- '2&10000000'	-or- '2&7'
+"bitmask": "0080",			--> '<byte>&<bitmask>',		'2&80'		-or- '2&10000000'	-or- '2&7'
 "bitpattern": "xx000011",  	--> '<byte>=<bytemask>', 	'1=--000011'
 "bitpattern": "x0xxxxxx",  								'1=-0------'
 "bitpattern": "00000000 xx000000",						'2=--000000'
@@ -78,29 +79,34 @@ class AnnotationValueFormatHelper {
         var stringValue: string = rawValue;
         switch(annotationValueFormat){
             case AnnotationValueFormat.ALPHABETIC: {
+                //TODO: extract to ByteHelper
                 stringValue = value.toString('utf-8');
                 break;
             }
             case AnnotationValueFormat.ALPHANUMERIC: {
+                //TODO: extract to ByteHelper
                 stringValue = value.toString('utf-8');
                 break;
             }
             case AnnotationValueFormat.ALPHANUMERIC_SPECIAL: {
+                //TODO: extract to ByteHelper
                 stringValue = value.toString('utf-8');
                 break;
             }
             case AnnotationValueFormat.UNSIGNED_NUMBER: {
                 //TODO: make this conditional on how many bytes are available (extend OctetBuffer)
                 //right now, this leads to error for number > 127
+                //TODO: extract to ByteHelper
                 stringValue = '' + value.readUInt8(value.length - 1);
                 break;
             }
             case AnnotationValueFormat.VARIABLE_BYTES: {
+                //TODO: extract to ByteHelper
                 stringValue = rawValue;
                 break;
             }
             case AnnotationValueFormat.VARIABLE_BITS: {
-
+                //TODO: extract to ByteHelper
                 var octetBuffer: OctetBuffer = new OctetBuffer(value);
                 var bufferBinaryString: string = '';
                 while (octetBuffer.remaining > 0){
@@ -119,20 +125,24 @@ class AnnotationValueFormatHelper {
             }
             case AnnotationValueFormat.COMPRESSED_NUMERIC: {
                 stringValue = rawValue;
-                //TOOD: remove right padded F
+                //TODO: remove right padded F
+                //TODO: extract to ByteHelper
                 break;
             }
             case AnnotationValueFormat.NUMERIC: {
                 stringValue = rawValue;
                 //TODO: remove left padded 0
+                //TODO: extract to ByteHelper
                 break;
             }
             case AnnotationValueFormat.YYMMDD: {
+                //TODO: extract to ByteHelper
                 stringValue = rawValue;
                 stringValue = stringValue.substring(0, 2) + '-' + stringValue.substring(2, 4) + '-' + stringValue.substring(4, 6);
                 break;
             }
             case AnnotationValueFormat.HHMMSS: {
+                //TODO: extract to ByteHelper
                 stringValue = rawValue;
                 stringValue = stringValue.substring(0, 2) + ':' + stringValue.substring(2, 4) + ':' + stringValue.substring(4, 6);
                 break;
@@ -143,6 +153,7 @@ class AnnotationValueFormatHelper {
     }
 }
 
+//TODO: extract to TlvAnnotation
 export interface ITlvAnnotation {
     tag: string;
     type: TlvType;
@@ -175,8 +186,10 @@ class TlvAnnotationComponent implements ITlvAnnotationComponent {
     constructor(public name: string, public selector: string, public triggered: boolean, public value: string) {}
 }
 
+//TODO: extract to TlvAnnotationResource
 export class TlvAnnotationRegistry {
 
+    //TODO: remove singleton
     private static INSTANCE: TlvAnnotationRegistry;
 
     public static getInstance(): TlvAnnotationRegistry {
@@ -194,6 +207,7 @@ export class TlvAnnotationRegistry {
         return this.getInstance().lookupAnnotation(tlvItems);
     }
 
+    //TODO: add registerAnnotationProviders([])
     public static registerAnnotationProvider(provider: ITlvAnnotationProvider): void {
         this.getInstance().registerAnnotationProvider(provider);
     }
@@ -249,6 +263,7 @@ export class TlvAnnotationRegistry {
     }
 }
 
+//TODO: extract to TlvAnnotationProvider
 export interface ITlvAnnotationProvider {
     name: string;
     reference: string;
@@ -394,6 +409,7 @@ export class DefaultTlvAnnotationProvider implements ITlvAnnotationProvider {
     }
 }
 
+//TODO: extract to TlvAnnotationResource
 export interface ITlvAnnotationResource {
     name: string;
     reference: string;
