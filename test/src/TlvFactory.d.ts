@@ -4,23 +4,22 @@ export declare class TlvFactoryParsingError implements Error {
     message: string;
     partialTlv: ITlv[];
     constructor(name: string, message: string, partialTlv: ITlv[]);
-    static error(error: Error, partialTlv: ITlv[]): TlvFactoryParsingError;
+    static errorPartialResult(error: Error, partialTlv: ITlv[]): TlvFactoryParsingError;
 }
 export declare class TlvFactoryTlvError implements Error {
     name: string;
     message: string;
     constructor(name: string, message: string);
-    static errorTagEmpty(): TlvFactoryTlvError;
-    static errorTagUnevenBytes(tag: string): TlvFactoryTlvError;
-    static errorTagContainsNonHex(tag: string): TlvFactoryTlvError;
-    static errorTagIllegaType(): TlvFactoryTlvError;
-    static errorValueIllegaType(): TlvFactoryTlvError;
-    static errorItemsIllegaType(): TlvFactoryTlvError;
+    static errorEmpty(parameter: string): TlvFactoryTlvError;
+    static errorUnevenBytes(parameter: string, given: string): TlvFactoryTlvError;
+    static errorContainsNonHex(parameter: string, given: string): TlvFactoryTlvError;
+    static errorUnsupportedType(parameter: string): TlvFactoryTlvError;
 }
 export declare class TlvFactorySerializationError implements Error {
     name: string;
     message: string;
     constructor(name: string, message: string);
+    static errorUnsupportedType(parameter: string): TlvFactorySerializationError;
 }
 export declare class TlvFactory {
     static primitiveTlv(tag: Buffer | string, value?: Buffer | string): ITlv;

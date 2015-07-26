@@ -34,7 +34,7 @@ const TLV_TAG_CLASS_CONTEXT_SPECIFIC: number = 0x80;
 const TLV_TAG_CLASS_PRIVATE: number = 0xC0;
 
 export class TlvHelper {
-
+    
     static typeFromTag(tagBuffer: Buffer): TlvType {
         var firstTagByte: number = tagBuffer.readUInt8(0);
         var typeIdentifier = (firstTagByte & TLV_TAG_CONSTRUCTED_FLAG);
@@ -72,7 +72,7 @@ export class TlvHelper {
 export class TlvFactoryParsingError implements Error {
     constructor(public name: string, public message: string, public partialTlv: ITlv[]) {}
 
-    static error(error: Error, partialTlv: ITlv[]): TlvFactoryParsingError{
+    static errorPartialResult(error: Error, partialTlv: ITlv[]): TlvFactoryParsingError{
         return new TlvFactoryParsingError(error.name, error.message, partialTlv);
     }
 }
@@ -80,29 +80,26 @@ export class TlvFactoryParsingError implements Error {
 export class TlvFactoryTlvError implements Error {
     constructor(public name: string, public message: string) {}
 
-    static errorTagEmpty(): TlvFactoryTlvError {
-        return new TlvFactoryTlvError('Error creating tag', 'Tag must NOT be <null> or ""');
+    static errorEmpty(parameter: string): TlvFactoryTlvError {
+        return new TlvFactoryTlvError('Error creating tlv item', '"' + parameter + '" must not be <null> or ""');
     }
-    static errorTagUnevenBytes(tag: string): TlvFactoryTlvError {
-        return new TlvFactoryTlvError('Error creating tag', 'Tag must be an even number, given ' + tag);
+    static errorUnevenBytes(parameter: string, given: string): TlvFactoryTlvError {
+        return new TlvFactoryTlvError('Error creating tlv item', '"' + parameter + '" must be an even number, given "' + given + '"');
     }
-    static errorTagContainsNonHex(tag: string): TlvFactoryTlvError {
-        return new TlvFactoryTlvError('Error creating tag', 'Tag must only contain hex characters, given ' + tag);
+    static errorContainsNonHex(parameter: string, given: string): TlvFactoryTlvError {
+        return new TlvFactoryTlvError('Error creating tlv item', '"' + parameter + '" must only contain hex characters, given "' + given + '"');
     }
-
-    static errorTagIllegaType(): TlvFactoryTlvError {
-        return new TlvFactoryTlvError('Error creating tag', 'Tag parameter is invalid');
-    }
-    static errorValueIllegaType(): TlvFactoryTlvError {
-        return new TlvFactoryTlvError('Error creating value', 'Value parameter is invalid');
-    }
-    static errorItemsIllegaType(): TlvFactoryTlvError {
-        return new TlvFactoryTlvError('Error creating items', 'Items parameter is invalid');
+    static errorUnsupportedType(parameter: string): TlvFactoryTlvError {
+        return new TlvFactoryTlvError('Error creating tlv item', '"' + parameter + '" is an unsupported format');
     }
 }
 
 export class TlvFactorySerializationError implements Error {
     constructor(public name: string, public message: string) {}
+
+    static errorUnsupportedType(parameter: string): TlvFactorySerializationError {
+        return new TlvFactorySerializationError('Error serializing ' + parameter, '"' + parameter + '" parameter type provided is not supported');
+    }
 }
 
 
@@ -113,133 +110,187 @@ class Tlv implements ITlv {
     public items: ITlv[];
     public value: Buffer;
 
-    constructor(tag: Buffer, payload: ITlv[] | Buffer) {
+    /**
+     * Internal methods, no type checking done! Use at your own risk :)
+     */
+    constructor(tag: Buffer, payload?: Buffer | ITlv[]) {
         var tagBuffer: Buffer = tag;
         var tagString: string = tagBuffer.toString('hex').toUpperCase();;
 
         this.tag = tagString;
         this.type = TlvHelper.typeFromTag(tagBuffer);
         this.class = TlvHelper.classFromTag(tagBuffer);
-        if (Buffer.isBuffer(payload)){
-            this.value = <Buffer>payload;
-            this.items = null;
-        }
-        else if (Array.isArray(payload)){
-            this.value = null;
-            this.items = <ITlv[]>payload;
-        }
-        else {
-            this.items = null;
-            this.value = null;
-        }
+
+        this.value = TlvFactoryHelper.verifyUncheckedTlvPrimitivePayload(this.type, payload);
+        this.items = TlvFactoryHelper.verifyUncheckedTlvConstructedPayload(this.type, payload);
     }
 }
 
 export class TlvFactory {
     static primitiveTlv(tag: Buffer | string, value?: Buffer | string): ITlv {
-        var tagBuffer: Buffer = TlvFactoryHelper.prepareTag(tag);
-        var valueBuffer: Buffer = TlvFactoryHelper.prepareBuffer(valueBuffer);
-        return new Tlv(tagBuffer, valueBuffer);
+        var verifiedTag: Buffer = TlvFactoryHelper.verifyGenericTag(tag);
+        var verifiedValue: Buffer = TlvFactoryHelper.verifyPrimitiveValue(value);
+        var primitiveTlv: ITlv = new Tlv(verifiedTag, verifiedValue);
+        return primitiveTlv;
     }
 
     static constructedTlv(tag: Buffer | string, items?: ITlv[]): ITlv {
-        var tagBuffer: Buffer = TlvFactoryHelper.prepareTag(tag);
-        var itemsArray: ITlv[] = TlvFactoryHelper.prepareItems(items);
-        return new Tlv(tagBuffer, itemsArray);
+        var verifiedTag: Buffer = TlvFactoryHelper.verifyGenericTag(tag);
+        var verifiedItems: ITlv[] = TlvFactoryHelper.verifyConstructedItems(items);
+        var constructedTlv: ITlv = new Tlv(verifiedTag, verifiedItems);
+        return constructedTlv;
     }
 
     static parse(buffer: Buffer | string): ITlv[] {
-        var parseBuffer: Buffer = TlvParser.prepareParseBuffer(buffer);
-        var parseResult: TlvParserResult<ITlv[]> = TlvParser.parseItems(parseBuffer);
-        if (parseResult.error != null){
-            throw TlvFactoryParsingError.error(parseResult.error, parseResult.result);
+        var verifiedValue: Buffer = TlvFactoryHelper.verifyParseValue(buffer);
+        var parsedResult: TlvParserResult<ITlv[]> = TlvParser.parseItems(verifiedValue);
+        if (parsedResult.error != null){
+            throw TlvFactoryParsingError.errorPartialResult(parsedResult.error, parsedResult.result);
         }
-        return parseResult.result;
+        return parsedResult.result;
     }
 
     static serialize(items: ITlv | ITlv[]): Buffer {
-        //TODO: check for correcty parameters
-        var checkedItems: ITlv[] = TlvFactoryHelper.prepareSerializeItems(items);
-
-        var serializedTlv: Buffer = TlvSerializer.serializeItems(checkedItems);
-        return serializedTlv;
+        var verifiedItems: ITlv[] = TlvFactoryHelper.verifySerializeItems(items);
+        var serializedItems: Buffer = TlvSerializer.serializeItems(verifiedItems);
+        return serializedItems;
     }
 
 }
 
 class TlvFactoryHelper {
 
-    static prepareTag(tag: Buffer | string): Buffer {
-        if (tag == null){
-            throw TlvFactoryTlvError.errorTagEmpty();
+    static verifyUncheckedTlvPrimitivePayload(type: TlvType, payload?: Buffer | ITlv[]): Buffer{
+        if(type !== TlvType.PRIMITIVE){
+            return null;
+        }
+        if (payload == null){
+            return new Buffer(0);
         }
 
-        var preparedTag: Buffer = null;
+        return <Buffer>payload;
+    }
+
+    static verifyUncheckedTlvConstructedPayload(type: TlvType, payload?: Buffer | ITlv[]): ITlv[]{
+        if(type !== TlvType.CONSTRUCTED){
+            return null;
+        }
+        if (payload == null){
+            return [];
+        }
+
+        return <ITlv[]>payload;
+    }
+
+
+    static verifyGenericTag(tag: Buffer | string): Buffer {
+        if (tag == null){
+            throw TlvFactoryTlvError.errorEmpty('tag');
+        }
+
+        var verifiedTag: Buffer = null;
         if (Buffer.isBuffer(tag)){
-            preparedTag = <Buffer>tag;
+            verifiedTag = TlvFactoryHelper.fromBuffer(tag);
         }
         else if (typeof tag === 'string'){
-            if (tag.length % 2 !== 0){
-                throw TlvFactoryTlvError.errorTagUnevenBytes(<string>tag);
-            }
-            try {
-                preparedTag = new Buffer(<string>tag, 'hex');
-            }
-            catch (error){
-                throw TlvFactoryTlvError.errorTagContainsNonHex(<string>tag);
-            }
+            verifiedTag = TlvFactoryHelper.fromString('tag', tag);
         }
         else {
-            throw TlvFactoryTlvError.errorTagIllegaType();
+            throw TlvFactoryTlvError.errorUnsupportedType('tag');
         }
 
-        return preparedTag;
+        return verifiedTag;
     }
 
-    static prepareBuffer(buffer?: Buffer | string): Buffer {
-        var preparedBuffer: Buffer = null;
+
+    static verifyPrimitiveValue(buffer?: Buffer | string): Buffer {
+        var verifiedValue: Buffer = null;
         if (buffer == null){
-            preparedBuffer = new Buffer(0);
+            verifiedValue = TlvFactoryHelper.emptyBuffer();
         }
         else if (Buffer.isBuffer(buffer)){
-            preparedBuffer = <Buffer>buffer;
+            verifiedValue = TlvFactoryHelper.fromBuffer(buffer);
         }
         else if (typeof buffer === 'string'){
-            preparedBuffer = new Buffer(<string>buffer, 'hex');
+            verifiedValue = TlvFactoryHelper.fromString('value', buffer);
         }
         else {
-            throw TlvFactoryTlvError.errorValueIllegaType();
+            throw TlvFactoryTlvError.errorUnsupportedType('value');
         }
-        return preparedBuffer;
+
+        return verifiedValue;
     }
 
-    static prepareItems(items?: ITlv[]): ITlv[] {
-        var preparedItems: ITlv[] = null;
+    static verifyConstructedItems(items?: ITlv[]): ITlv[] {
+        var verifiedItems: ITlv[] = null;
         if (items == null){
-            preparedItems = [];
+            verifiedItems = [];
         }
         if (Array.isArray(items)){
-            preparedItems = items;
+            verifiedItems = items;
         }
         else {
-            throw TlvFactoryTlvError.errorItemsIllegaType();
+            throw TlvFactoryTlvError.errorUnsupportedType('items');
         }
-        return preparedItems;
+
+        return verifiedItems;
     }
 
-    static prepareSerializeItems(items: ITlv | ITlv[]): ITlv[] {
-        var preparedItems: ITlv[] = null;
-        if (items == null){
-            throw TlvFactoryTlvError.errorItemsIllegaType();
+    static verifyParseValue(buffer?: Buffer | string): Buffer {
+        var verifiedValue: Buffer = null;
+        if (buffer == null){
+            verifiedValue = TlvFactoryHelper.emptyBuffer();
         }
-
-        if (Array.isArray(items)){
-            preparedItems = <ITlv[]>items;
+        else if (Buffer.isBuffer(buffer)){
+            verifiedValue = TlvFactoryHelper.fromBuffer(buffer);
+        }
+        else if (typeof buffer === 'string'){
+            verifiedValue = TlvFactoryHelper.fromString('value', buffer);
         }
         else {
-            preparedItems = [<ITlv>items];
+            throw TlvFactoryTlvError.errorUnsupportedType('buffer');
         }
-        return preparedItems;
+        return verifiedValue;
+    }
+
+    static verifySerializeItems(items: ITlv | ITlv[]): ITlv[] {
+        var verifiedItems: ITlv[] = null;
+        if (items == null){
+            throw TlvFactoryTlvError.errorUnsupportedType('items');
+        }
+        if (Array.isArray(items)){
+            verifiedItems = <ITlv[]>items;
+        }
+        else {
+            verifiedItems = [<ITlv>items];
+        }
+
+        return verifiedItems;
+    }
+
+
+    static emptyBuffer(): Buffer{
+        return new Buffer(0);
+    }
+
+    static fromBuffer(buffer: any): Buffer {
+        var verifiedBuffer: Buffer = buffer;
+        return verifiedBuffer;
+    }
+    static fromString(parameter: string, string: any): Buffer {
+        if (string.length % 2 !== 0){
+            throw TlvFactoryTlvError.errorUnevenBytes(parameter, string);
+        }
+
+        var verifiedString: Buffer = null;
+        try {
+            verifiedString = new Buffer(<string>string, 'hex');
+        }
+        catch (error){
+            throw TlvFactoryTlvError.errorContainsNonHex(parameter, string);
+        }
+
+        return verifiedString;
     }
 
 }
@@ -804,7 +855,7 @@ export class TlvSerializer {
 export class TlvFactoryParsingError implements Error {
     constructor(public name: string, public message: string, public partialTlv: ITlv[]) {}
 
-    static error(error: Error, partialTlv: ITlv[]): TlvFactoryParsingError{
+    static errorPartialResult(error: Error, partialTlv: ITlv[]): TlvFactoryParsingError{
         return new TlvFactoryParsingError(error.name, error.message, partialTlv);
     }
 }
@@ -812,29 +863,26 @@ export class TlvFactoryParsingError implements Error {
 export class TlvFactoryTlvError implements Error {
     constructor(public name: string, public message: string) {}
 
-    static errorTagEmpty(): TlvFactoryTlvError {
-        return new TlvFactoryTlvError('Error creating tag', 'Tag must NOT be <null> or ""');
+    static errorEmpty(parameter: string): TlvFactoryTlvError {
+        return new TlvFactoryTlvError('Error creating tlv item', '"' + parameter + '" must not be <null> or ""');
     }
-    static errorTagUnevenBytes(tag: string): TlvFactoryTlvError {
-        return new TlvFactoryTlvError('Error creating tag', 'Tag must be an even number, given ' + tag);
+    static errorUnevenBytes(parameter: string, given: string): TlvFactoryTlvError {
+        return new TlvFactoryTlvError('Error creating tlv item', '"' + parameter + '" must be an even number, given "' + given + '"');
     }
-    static errorTagContainsNonHex(tag: string): TlvFactoryTlvError {
-        return new TlvFactoryTlvError('Error creating tag', 'Tag must only contain hex characters, given ' + tag);
+    static errorContainsNonHex(parameter: string, given: string): TlvFactoryTlvError {
+        return new TlvFactoryTlvError('Error creating tlv item', '"' + parameter + '" must only contain hex characters, given "' + given + '"');
     }
-
-    static errorTagIllegaType(): TlvFactoryTlvError {
-        return new TlvFactoryTlvError('Error creating tag', 'Tag parameter is invalid');
-    }
-    static errorValueIllegaType(): TlvFactoryTlvError {
-        return new TlvFactoryTlvError('Error creating value', 'Value parameter is invalid');
-    }
-    static errorItemsIllegaType(): TlvFactoryTlvError {
-        return new TlvFactoryTlvError('Error creating items', 'Items parameter is invalid');
+    static errorUnsupportedType(parameter: string): TlvFactoryTlvError {
+        return new TlvFactoryTlvError('Error creating tlv item', '"' + parameter + '" is an unsupported format');
     }
 }
 
 export class TlvFactorySerializationError implements Error {
     constructor(public name: string, public message: string) {}
+
+    static errorUnsupportedType(parameter: string): TlvFactorySerializationError {
+        return new TlvFactorySerializationError('Error serializing ' + parameter, '"' + parameter + '" parameter type provided is not supported');
+    }
 }
 
 
@@ -845,133 +893,187 @@ class Tlv implements ITlv {
     public items: ITlv[];
     public value: Buffer;
 
-    constructor(tag: Buffer, payload: ITlv[] | Buffer) {
+    /**
+     * Internal methods, no type checking done! Use at your own risk :)
+     */
+    constructor(tag: Buffer, payload?: Buffer | ITlv[]) {
         var tagBuffer: Buffer = tag;
         var tagString: string = tagBuffer.toString('hex').toUpperCase();;
 
         this.tag = tagString;
         this.type = TlvHelper.typeFromTag(tagBuffer);
         this.class = TlvHelper.classFromTag(tagBuffer);
-        if (Buffer.isBuffer(payload)){
-            this.value = <Buffer>payload;
-            this.items = null;
-        }
-        else if (Array.isArray(payload)){
-            this.value = null;
-            this.items = <ITlv[]>payload;
-        }
-        else {
-            this.items = null;
-            this.value = null;
-        }
+
+        this.value = TlvFactoryHelper.verifyUncheckedTlvPrimitivePayload(this.type, payload);
+        this.items = TlvFactoryHelper.verifyUncheckedTlvConstructedPayload(this.type, payload);
     }
 }
 
 export class TlvFactory {
     static primitiveTlv(tag: Buffer | string, value?: Buffer | string): ITlv {
-        var tagBuffer: Buffer = TlvFactoryHelper.prepareTag(tag);
-        var valueBuffer: Buffer = TlvFactoryHelper.prepareBuffer(valueBuffer);
-        return new Tlv(tagBuffer, valueBuffer);
+        var verifiedTag: Buffer = TlvFactoryHelper.verifyGenericTag(tag);
+        var verifiedValue: Buffer = TlvFactoryHelper.verifyPrimitiveValue(value);
+        var primitiveTlv: ITlv = new Tlv(verifiedTag, verifiedValue);
+        return primitiveTlv;
     }
 
     static constructedTlv(tag: Buffer | string, items?: ITlv[]): ITlv {
-        var tagBuffer: Buffer = TlvFactoryHelper.prepareTag(tag);
-        var itemsArray: ITlv[] = TlvFactoryHelper.prepareItems(items);
-        return new Tlv(tagBuffer, itemsArray);
+        var verifiedTag: Buffer = TlvFactoryHelper.verifyGenericTag(tag);
+        var verifiedItems: ITlv[] = TlvFactoryHelper.verifyConstructedItems(items);
+        var constructedTlv: ITlv = new Tlv(verifiedTag, verifiedItems);
+        return constructedTlv;
     }
 
     static parse(buffer: Buffer | string): ITlv[] {
-        var parseBuffer: Buffer = TlvParser.prepareParseBuffer(buffer);
-        var parseResult: TlvParserResult<ITlv[]> = TlvParser.parseItems(parseBuffer);
-        if (parseResult.error != null){
-            throw TlvFactoryParsingError.error(parseResult.error, parseResult.result);
+        var verifiedValue: Buffer = TlvFactoryHelper.verifyParseValue(buffer);
+        var parsedResult: TlvParserResult<ITlv[]> = TlvParser.parseItems(verifiedValue);
+        if (parsedResult.error != null){
+            throw TlvFactoryParsingError.errorPartialResult(parsedResult.error, parsedResult.result);
         }
-        return parseResult.result;
+        return parsedResult.result;
     }
 
     static serialize(items: ITlv | ITlv[]): Buffer {
-        //TODO: check for correcty parameters
-        var checkedItems: ITlv[] = TlvFactoryHelper.prepareSerializeItems(items);
-
-        var serializedTlv: Buffer = TlvSerializer.serializeItems(checkedItems);
-        return serializedTlv;
+        var verifiedItems: ITlv[] = TlvFactoryHelper.verifySerializeItems(items);
+        var serializedItems: Buffer = TlvSerializer.serializeItems(verifiedItems);
+        return serializedItems;
     }
 
 }
 
 class TlvFactoryHelper {
 
-    static prepareTag(tag: Buffer | string): Buffer {
-        if (tag == null){
-            throw TlvFactoryTlvError.errorTagEmpty();
+    static verifyUncheckedTlvPrimitivePayload(type: TlvType, payload?: Buffer | ITlv[]): Buffer{
+        if(type !== TlvType.PRIMITIVE){
+            return null;
+        }
+        if (payload == null){
+            return new Buffer(0);
         }
 
-        var preparedTag: Buffer = null;
+        return <Buffer>payload;
+    }
+
+    static verifyUncheckedTlvConstructedPayload(type: TlvType, payload?: Buffer | ITlv[]): ITlv[]{
+        if(type !== TlvType.CONSTRUCTED){
+            return null;
+        }
+        if (payload == null){
+            return [];
+        }
+
+        return <ITlv[]>payload;
+    }
+
+
+    static verifyGenericTag(tag: Buffer | string): Buffer {
+        if (tag == null){
+            throw TlvFactoryTlvError.errorEmpty('tag');
+        }
+
+        var verifiedTag: Buffer = null;
         if (Buffer.isBuffer(tag)){
-            preparedTag = <Buffer>tag;
+            verifiedTag = TlvFactoryHelper.fromBuffer(tag);
         }
         else if (typeof tag === 'string'){
-            if (tag.length % 2 !== 0){
-                throw TlvFactoryTlvError.errorTagUnevenBytes(<string>tag);
-            }
-            try {
-                preparedTag = new Buffer(<string>tag, 'hex');
-            }
-            catch (error){
-                throw TlvFactoryTlvError.errorTagContainsNonHex(<string>tag);
-            }
+            verifiedTag = TlvFactoryHelper.fromString('tag', tag);
         }
         else {
-            throw TlvFactoryTlvError.errorTagIllegaType();
+            throw TlvFactoryTlvError.errorUnsupportedType('tag');
         }
 
-        return preparedTag;
+        return verifiedTag;
     }
 
-    static prepareBuffer(buffer?: Buffer | string): Buffer {
-        var preparedBuffer: Buffer = null;
+
+    static verifyPrimitiveValue(buffer?: Buffer | string): Buffer {
+        var verifiedValue: Buffer = null;
         if (buffer == null){
-            preparedBuffer = new Buffer(0);
+            verifiedValue = TlvFactoryHelper.emptyBuffer();
         }
         else if (Buffer.isBuffer(buffer)){
-            preparedBuffer = <Buffer>buffer;
+            verifiedValue = TlvFactoryHelper.fromBuffer(buffer);
         }
         else if (typeof buffer === 'string'){
-            preparedBuffer = new Buffer(<string>buffer, 'hex');
+            verifiedValue = TlvFactoryHelper.fromString('value', buffer);
         }
         else {
-            throw TlvFactoryTlvError.errorValueIllegaType();
+            throw TlvFactoryTlvError.errorUnsupportedType('value');
         }
-        return preparedBuffer;
+
+        return verifiedValue;
     }
 
-    static prepareItems(items?: ITlv[]): ITlv[] {
-        var preparedItems: ITlv[] = null;
+    static verifyConstructedItems(items?: ITlv[]): ITlv[] {
+        var verifiedItems: ITlv[] = null;
         if (items == null){
-            preparedItems = [];
+            verifiedItems = [];
         }
         if (Array.isArray(items)){
-            preparedItems = items;
+            verifiedItems = items;
         }
         else {
-            throw TlvFactoryTlvError.errorItemsIllegaType();
+            throw TlvFactoryTlvError.errorUnsupportedType('items');
         }
-        return preparedItems;
+
+        return verifiedItems;
     }
 
-    static prepareSerializeItems(items: ITlv | ITlv[]): ITlv[] {
-        var preparedItems: ITlv[] = null;
-        if (items == null){
-            throw TlvFactoryTlvError.errorItemsIllegaType();
+    static verifyParseValue(buffer?: Buffer | string): Buffer {
+        var verifiedValue: Buffer = null;
+        if (buffer == null){
+            verifiedValue = TlvFactoryHelper.emptyBuffer();
         }
-
-        if (Array.isArray(items)){
-            preparedItems = <ITlv[]>items;
+        else if (Buffer.isBuffer(buffer)){
+            verifiedValue = TlvFactoryHelper.fromBuffer(buffer);
+        }
+        else if (typeof buffer === 'string'){
+            verifiedValue = TlvFactoryHelper.fromString('value', buffer);
         }
         else {
-            preparedItems = [<ITlv>items];
+            throw TlvFactoryTlvError.errorUnsupportedType('buffer');
         }
-        return preparedItems;
+        return verifiedValue;
+    }
+
+    static verifySerializeItems(items: ITlv | ITlv[]): ITlv[] {
+        var verifiedItems: ITlv[] = null;
+        if (items == null){
+            throw TlvFactoryTlvError.errorUnsupportedType('items');
+        }
+        if (Array.isArray(items)){
+            verifiedItems = <ITlv[]>items;
+        }
+        else {
+            verifiedItems = [<ITlv>items];
+        }
+
+        return verifiedItems;
+    }
+
+
+    static emptyBuffer(): Buffer{
+        return new Buffer(0);
+    }
+
+    static fromBuffer(buffer: any): Buffer {
+        var verifiedBuffer: Buffer = buffer;
+        return verifiedBuffer;
+    }
+    static fromString(parameter: string, string: any): Buffer {
+        if (string.length % 2 !== 0){
+            throw TlvFactoryTlvError.errorUnevenBytes(parameter, string);
+        }
+
+        var verifiedString: Buffer = null;
+        try {
+            verifiedString = new Buffer(<string>string, 'hex');
+        }
+        catch (error){
+            throw TlvFactoryTlvError.errorContainsNonHex(parameter, string);
+        }
+
+        return verifiedString;
     }
 
 }

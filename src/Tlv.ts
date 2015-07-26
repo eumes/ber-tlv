@@ -27,7 +27,7 @@ const TLV_TAG_CLASS_CONTEXT_SPECIFIC: number = 0x80;
 const TLV_TAG_CLASS_PRIVATE: number = 0xC0;
 
 export class TlvHelper {
-
+    
     static typeFromTag(tagBuffer: Buffer): TlvType {
         var firstTagByte: number = tagBuffer.readUInt8(0);
         var typeIdentifier = (firstTagByte & TLV_TAG_CONSTRUCTED_FLAG);
