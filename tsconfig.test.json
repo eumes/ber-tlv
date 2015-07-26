@@ -12,14 +12,13 @@
         "./typings/node/node.d.ts",
         "./typings/chai/chai.d.ts",
         "./typings/mocha/mocha.d.ts",
-
         "./node_modules/octet-buffer/dist/octet-buffer.d.ts",
 
-        "./src/ByteHelper.ts",
         "./src/Tlv.ts",
-        "./src/TlvAnnotation.ts",
-        "./src/Tlv-Specs.ts",
-        "./src/TlvAnnotation-Specs.ts"
+        "./src/TlvFactory.ts",
+        "./src/TlvParser.ts",
+        "./src/TlvSerializer.ts",
+        "./src/Tlv-Specs.ts"
     ],
     "bundles": {
         "ber-tlv-test": {
@@ -29,8 +28,7 @@
                 "./typings/mocha/mocha.d.ts",
                 "./node_modules/octet-buffer/dist/octet-buffer.d.ts",
 
-                "./src/Tlv-Specs.ts",
-                "./src/TlvAnnotation-Specs.ts"
+                "./src/Tlv-Specs.ts"
             ]
         }
     }
