@@ -15,10 +15,6 @@
     "build": "gulp build",
     "test": "gulp test"
   },
-  "dependencies": {
-    "country-data": "0.0.19",
-    "i18n-iso-countries": "^0.8.0"
-  },
   "devDependencies": {
     "del": "^1.2.0",
     "gulp": "^3.9.0",
