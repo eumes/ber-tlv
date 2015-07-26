@@ -1,18 +1,18 @@
 var Tlv_1 = require('./Tlv');
 var TlvParser_1 = require('./TlvParser');
 var TlvSerializer_1 = require('./TlvSerializer');
-var TlvFactoryParsingError = (function () {
-    function TlvFactoryParsingError(name, message, partialTlv) {
+var TlvFactoryParseError = (function () {
+    function TlvFactoryParseError(name, message, partialTlv) {
         this.name = name;
         this.message = message;
         this.partialTlv = partialTlv;
     }
-    TlvFactoryParsingError.errorPartialResult = function (error, partialTlv) {
-        return new TlvFactoryParsingError(error.name, error.message, partialTlv);
+    TlvFactoryParseError.errorPartialResult = function (error, partialTlv) {
+        return new TlvFactoryParseError(error.name, error.message, partialTlv);
     };
-    return TlvFactoryParsingError;
+    return TlvFactoryParseError;
 })();
-exports.TlvFactoryParsingError = TlvFactoryParsingError;
+exports.TlvFactoryParseError = TlvFactoryParseError;
 var TlvFactoryTlvError = (function () {
     function TlvFactoryTlvError(name, message) {
         this.name = name;
@@ -33,17 +33,17 @@ var TlvFactoryTlvError = (function () {
     return TlvFactoryTlvError;
 })();
 exports.TlvFactoryTlvError = TlvFactoryTlvError;
-var TlvFactorySerializationError = (function () {
-    function TlvFactorySerializationError(name, message) {
+var TlvFactorySerializeError = (function () {
+    function TlvFactorySerializeError(name, message) {
         this.name = name;
         this.message = message;
     }
-    TlvFactorySerializationError.errorUnsupportedType = function (parameter) {
-        return new TlvFactorySerializationError('Error serializing ' + parameter, '"' + parameter + '" parameter type provided is not supported');
+    TlvFactorySerializeError.errorUnsupportedType = function (parameter) {
+        return new TlvFactorySerializeError('Error serializing ' + parameter, '"' + parameter + '" parameter type provided is not supported');
     };
-    return TlvFactorySerializationError;
+    return TlvFactorySerializeError;
 })();
-exports.TlvFactorySerializationError = TlvFactorySerializationError;
+exports.TlvFactorySerializeError = TlvFactorySerializeError;
 var Tlv = (function () {
     function Tlv(tag, payload) {
         var tagBuffer = tag;
@@ -76,7 +76,7 @@ var TlvFactory = (function () {
         var verifiedValue = TlvFactoryHelper.verifyParseValue(buffer);
         var parsedResult = TlvParser_1.TlvParser.parseItems(verifiedValue);
         if (parsedResult.error != null) {
-            throw TlvFactoryParsingError.errorPartialResult(parsedResult.error, parsedResult.result);
+            throw TlvFactoryParseError.errorPartialResult(parsedResult.error, parsedResult.result);
         }
         return parsedResult.result;
     };

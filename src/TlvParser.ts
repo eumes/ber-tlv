@@ -2,27 +2,27 @@ import { ITlv, TlvType, TlvClass, TlvHelper } from './Tlv';
 import { TlvFactory } from './TlvFactory';
 import { OctetBuffer } from '../node_modules/octet-buffer/dist/octet-buffer';
 
-class TlvParsingError implements Error {
+class TlvParserParseError implements Error {
     constructor(public name: string, public message: string) {}
 
-    static errorBufferNull(): TlvParsingError {
-        return new TlvParsingError('Error parsing data', 'Buffer must NOT be <null>');
+    static errorEmpty(parameter: string): TlvParserParseError {
+        return new TlvParserParseError('Error parsing data', '"' + parameter + '" must not be <null> or ""');
     }
-    static errorIllegalType(): TlvParsingError {
-        return new TlvParsingError('Error parsing data', 'Biffer parameter is invalid');
+    static errorUnsupportedType(parameter: string): TlvParserParseError {
+        return new TlvParserParseError('Error parsing data', '"' + parameter + '" is an unsupported format');
     }
 
-    static errorParsingTagInsufficientData(partialTag: Buffer): TlvParsingError {
-        return new TlvParsingError('Error while reading tag for item starting with "' + partialTag.toString('hex').toUpperCase() + '"', 'Need at least 1 additional byte to complete tag');
+    static errorInsufficientTagData(partialTag: Buffer): TlvParserParseError {
+        return new TlvParserParseError('Error while reading tag for item starting with "' + partialTag.toString('hex').toUpperCase() + '"', 'Need at least 1 additional byte to complete tag');
     }
-    static errorParsingLengthInsufficientData(tag: Buffer, missing: number): TlvParsingError {
-        return new TlvParsingError('Error while reading length for item "' +  tag.toString('hex').toUpperCase() + '"', 'Need at least ' + missing + ' addional bytes to read length information');
+    static errorInsufficientLengthData(tag: Buffer, missing: number): TlvParserParseError {
+        return new TlvParserParseError('Error while reading length for item "' +  tag.toString('hex').toUpperCase() + '"', 'Need at least ' + missing + ' addional bytes to read length information');
     }
-    static errorParsingLengthNumberTooBig(tag: Buffer, given: number): TlvParsingError {
-        return new TlvParsingError('Error while reading length for item "' + tag.toString('hex').toUpperCase() + '"', 'Maximum number of concatenated length bytes supported is 4, present ' + given);
+    static errorLengthTooBig(tag: Buffer, given: number): TlvParserParseError {
+        return new TlvParserParseError('Error while reading length for item "' + tag.toString('hex').toUpperCase() + '"', 'Maximum number of concatenated length bytes supported is 4, present ' + given);
     }
-    static errorParsingValueInsufficientData(tag: Buffer, missing: number): TlvParsingError {
-        return new TlvParsingError('Error while reading value for item "' + tag.toString('hex').toUpperCase() + '"', 'Need at least ' + missing + ' addional bytes for reading complete value');
+    static errorInsufficientValueData(tag: Buffer, missing: number): TlvParserParseError {
+        return new TlvParserParseError('Error while reading value for item "' + tag.toString('hex').toUpperCase() + '"', 'Need at least ' + missing + ' addional bytes for reading complete value');
     }
 }
 
@@ -30,46 +30,29 @@ export class TlvParserResult<T> {
     constructor(public result: T, public error: Error) {}
 }
 
-export class TlvParser {
+const TLV_IGNORE_VALUE: number = 0x00;
+const TLV_TAG_ONE_BYTE_FLAG: number = 0x1F;
+const TLV_TAG_HAS_NEXT_BYTE_FLAG: number = 0x80;
+const TLV_LENGTH_ONE_BYTE_FLAG: number = 0x80;
+const TLV_LENGTH_ADDITIONAL_BYTES_FLAG: number = 0x7F;
 
-    static prepareParseBuffer(buffer: Buffer | string){
-        var preparedParseBuffer: Buffer = null;
-        if (buffer == null){
-            preparedParseBuffer = new Buffer(0);
-        }
-        else if (Buffer.isBuffer(buffer)){
-            preparedParseBuffer = <Buffer>buffer;
-        }
-        else if (typeof buffer === 'string'){
-            preparedParseBuffer = new Buffer(<string>buffer, 'hex');
-        }
-        else {
-            TlvParsingError.errorIllegalType();
-        }
-        return preparedParseBuffer;
-    }
+export class TlvParser {
 
     static parseItems(buffer: Buffer): TlvParserResult<ITlv[]> {
         var octetBuffer: OctetBuffer = new OctetBuffer(buffer);
-        // console.log('start parsing items, remaining length: ' + buffer.remaining);
         var items: ITlv[] = [];
-        var errorOccured: boolean = false;
 
         while(octetBuffer.remaining > 0){
             this.skipZeroBytes(octetBuffer);
             var parseResult: TlvParserResult<ITlv> = this.parseItem(octetBuffer);
-            if (parseResult.result != null){
-                // console.log('got first item: ' + parseResult.result);
+            if (parseResult.result !== null){
                 items.push(parseResult.result);
             }
-            if (parseResult.error != null){
-                // console.log('error parsing item: ' + parseResult.error);
+            if (parseResult.error !== null){
                 return new TlvParserResult<ITlv[]>(items, parseResult.error);
             }
-            // console.log('remaining length: ' + buffer.remaining);
         }
 
-        //console.log('parsing completed with tags: ' +  util.inspect(items, {showHidden: false, depth: null}));
         return new TlvParserResult<ITlv[]>(items, null);
     }
 
@@ -77,7 +60,7 @@ export class TlvParser {
         var peeked: number;
         while(buffer.remaining > 0){
             peeked = buffer.peek();
-            if (peeked !== 0x00){
+            if (peeked !== TLV_IGNORE_VALUE){
                 break;
             }
             buffer.readUInt8();
@@ -107,30 +90,30 @@ export class TlvParser {
         var valueParsingResult: TlvParserResult<Buffer> = this.parseValue(buffer, length, tagBuffer);
         var value: Buffer = valueParsingResult.result;
         if (valueParsingResult.error != null){
-            //we are returning the partially parsed data in case of an error
             var tlvItem: ITlv = TlvFactory.primitiveTlv(tagBuffer, value);
             return new TlvParserResult<ITlv>(tlvItem, valueParsingResult.error);
         }
         //console.log('got value: ' + value.toString('hex'));
 
-        if (type == TlvType.PRIMITIVE){
-            // console.log('returning with primitve tag');
-            var tlvItem: ITlv = TlvFactory.primitiveTlv(tagBuffer, value);
-            return new TlvParserResult<ITlv>(tlvItem, valueParsingResult.error);
-        }
-        else {
+        if (type === TlvType.CONSTRUCTED) {
             // console.log('detected constructed tag, now parsing payload');
             var subParsingResult: TlvParserResult<ITlv[]> = this.parseItems(value);
             var tlvItem: ITlv = TlvFactory.constructedTlv(tagBuffer, subParsingResult.result);
             // console.log('returning with constructed tag');
             return new TlvParserResult<ITlv>(tlvItem, subParsingResult.error);
         }
+        else {
+            // console.log('returning with primitve tag');
+            var tlvItem: ITlv = TlvFactory.primitiveTlv(tagBuffer, value);
+            return new TlvParserResult<ITlv>(tlvItem, valueParsingResult.error);
+        }
+
     }
 
 
     static parseTag(buffer: OctetBuffer): TlvParserResult<Buffer> {
         if (buffer.remaining === 0){
-            return new TlvParserResult<Buffer>(null, TlvParsingError.errorParsingTagInsufficientData(new Buffer(0)));
+            return new TlvParserResult<Buffer>(null, TlvParserParseError.errorInsufficientTagData(new Buffer(0)));
         }
 
         var tagBuffer: OctetBuffer = new OctetBuffer();
@@ -138,52 +121,60 @@ export class TlvParser {
         tagBuffer.writeUInt8(tagByte);
         //console.log('first tag: ' + tagByte);
 
-        if ((tagByte & 0x1F) !== 0x1F){
+        if ((tagByte & TLV_TAG_ONE_BYTE_FLAG) !== TLV_TAG_ONE_BYTE_FLAG){
             //console.log('returning with one byte tag: ' + tagByte);
             return new TlvParserResult<Buffer>(tagBuffer.backingBuffer, null);
         }
 
         do {
             if (buffer.remaining === 0){
-                return new TlvParserResult<Buffer>(tagBuffer.backingBuffer, TlvParsingError.errorParsingTagInsufficientData(tagBuffer.backingBuffer));
+                return new TlvParserResult<Buffer>(tagBuffer.backingBuffer, TlvParserParseError.errorInsufficientTagData(tagBuffer.backingBuffer));
             }
 
             tagByte = buffer.readUInt8();
             tagBuffer.writeUInt8(tagByte);
             //console.log('and we read another round of tags: ' + tagByte);
-        } while((tagByte & 0x80) == 0x80);
+        } while((tagByte & TLV_TAG_HAS_NEXT_BYTE_FLAG) == TLV_TAG_HAS_NEXT_BYTE_FLAG);
 
         return new TlvParserResult<Buffer>(tagBuffer.backingBuffer, null);
     }
 
     static parseLength(buffer: OctetBuffer, tag: Buffer): TlvParserResult<number> {
-        if (buffer.remaining == 0){
-            return new TlvParserResult<number>(null, TlvParsingError.errorParsingLengthInsufficientData(tag, 1));
+        if (buffer.remaining === 0){
+            return new TlvParserResult<number>(null, TlvParserParseError.errorInsufficientLengthData(tag, 1));
         }
 
         var length: number = buffer.readUInt8();
         // console.log('first length: ' + length);
-        if ((length & 0x80) != 0x80){
+        if ((length & TLV_LENGTH_ONE_BYTE_FLAG) !== TLV_LENGTH_ONE_BYTE_FLAG){
             // console.log('returning with one byte length: ' + length);
             return new TlvParserResult<number>(length, null);
         }
 
-        var bytesToRead: number = (length & 0x7F);
+        var bytesToRead: number = (length & TLV_LENGTH_ADDITIONAL_BYTES_FLAG);
         if (bytesToRead > 4){
-            return new TlvParserResult<number>(null, TlvParsingError.errorParsingLengthNumberTooBig(tag, bytesToRead));
+            return new TlvParserResult<number>(null, TlvParserParseError.errorLengthTooBig(tag, bytesToRead));
         }
         if (buffer.remaining < bytesToRead){
-            return new TlvParserResult<number>(null, TlvParsingError.errorParsingLengthInsufficientData(tag, bytesToRead - buffer.remaining));
+            return new TlvParserResult<number>(null, TlvParserParseError.errorInsufficientLengthData(tag, bytesToRead - buffer.remaining));
         }
 
-        var nextByte: number;
         length = 0;
-        for (var i: number = 0; i < bytesToRead; i++){
-            nextByte = buffer.readUInt8();
-            // console.log('read another round of length: ' + nextByte);
-            length = length << 8;
-            length = length | nextByte;
+        switch(bytesToRead){
+            case 1:
+                length = buffer.readUInt8();
+                break;
+            case 2:
+                length = buffer.readUInt16();
+                break;
+            case 3:
+                length = buffer.readUInt24();
+                break;
+            case 4:
+                length = buffer.readUInt32();
+                break;
         }
+
         // console.log('returning with length: ' + length);
         return new TlvParserResult<number>(length, null);
     }
@@ -191,9 +182,9 @@ export class TlvParser {
     static parseValue(buffer: OctetBuffer, length: number, tag: Buffer): TlvParserResult<Buffer> {
         if (buffer.remaining < length){
             //console.log('need ' + length + ', available '+ buffer.remaining);
-            var remaining = buffer.remaining;
+            var missing = length - buffer.remaining;
             var partialValue: Buffer = buffer.readBufferRemainig();
-            return new TlvParserResult<Buffer>(partialValue, TlvParsingError.errorParsingValueInsufficientData(tag, length - remaining));
+            return new TlvParserResult<Buffer>(partialValue, TlvParserParseError.errorInsufficientValueData(tag, missing));
         }
         var value: Buffer = buffer.readBuffer(length);
         return new TlvParserResult<Buffer>(value, null);

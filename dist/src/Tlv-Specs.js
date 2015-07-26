@@ -13,7 +13,7 @@ describe('Tlv', function () {
         var items;
         var error;
         it('can parse 1 byte tag primitve tlv object', function () {
-            buffer = tlvGenerator('5A', '02', '2020');
+            buffer = tlvGenerator('005A', '02', '2020');
             items = TlvFactory_1.TlvFactory.parse(buffer);
             chai_1.expect(items).to.exist;
             var item = items.pop();

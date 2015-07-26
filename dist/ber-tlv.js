@@ -48,18 +48,18 @@ var TlvHelper = (function () {
     return TlvHelper;
 })();
 exports.TlvHelper = TlvHelper;
-var TlvFactoryParsingError = (function () {
-    function TlvFactoryParsingError(name, message, partialTlv) {
+var TlvFactoryParseError = (function () {
+    function TlvFactoryParseError(name, message, partialTlv) {
         this.name = name;
         this.message = message;
         this.partialTlv = partialTlv;
     }
-    TlvFactoryParsingError.errorPartialResult = function (error, partialTlv) {
-        return new TlvFactoryParsingError(error.name, error.message, partialTlv);
+    TlvFactoryParseError.errorPartialResult = function (error, partialTlv) {
+        return new TlvFactoryParseError(error.name, error.message, partialTlv);
     };
-    return TlvFactoryParsingError;
+    return TlvFactoryParseError;
 })();
-exports.TlvFactoryParsingError = TlvFactoryParsingError;
+exports.TlvFactoryParseError = TlvFactoryParseError;
 var TlvFactoryTlvError = (function () {
     function TlvFactoryTlvError(name, message) {
         this.name = name;
@@ -80,17 +80,17 @@ var TlvFactoryTlvError = (function () {
     return TlvFactoryTlvError;
 })();
 exports.TlvFactoryTlvError = TlvFactoryTlvError;
-var TlvFactorySerializationError = (function () {
-    function TlvFactorySerializationError(name, message) {
+var TlvFactorySerializeError = (function () {
+    function TlvFactorySerializeError(name, message) {
         this.name = name;
         this.message = message;
     }
-    TlvFactorySerializationError.errorUnsupportedType = function (parameter) {
-        return new TlvFactorySerializationError('Error serializing ' + parameter, '"' + parameter + '" parameter type provided is not supported');
+    TlvFactorySerializeError.errorUnsupportedType = function (parameter) {
+        return new TlvFactorySerializeError('Error serializing ' + parameter, '"' + parameter + '" parameter type provided is not supported');
     };
-    return TlvFactorySerializationError;
+    return TlvFactorySerializeError;
 })();
-exports.TlvFactorySerializationError = TlvFactorySerializationError;
+exports.TlvFactorySerializeError = TlvFactorySerializeError;
 var Tlv = (function () {
     function Tlv(tag, payload) {
         var tagBuffer = tag;
@@ -123,7 +123,7 @@ var TlvFactory = (function () {
         var verifiedValue = TlvFactoryHelper.verifyParseValue(buffer);
         var parsedResult = TlvParser.parseItems(verifiedValue);
         if (parsedResult.error != null) {
-            throw TlvFactoryParsingError.errorPartialResult(parsedResult.error, parsedResult.result);
+            throw TlvFactoryParseError.errorPartialResult(parsedResult.error, parsedResult.result);
         }
         return parsedResult.result;
     };
@@ -486,30 +486,30 @@ var OctetBuffer = (function () {
     return OctetBuffer;
 })();
 exports.OctetBuffer = OctetBuffer;
-var TlvParsingError = (function () {
-    function TlvParsingError(name, message) {
+var TlvParserParseError = (function () {
+    function TlvParserParseError(name, message) {
         this.name = name;
         this.message = message;
     }
-    TlvParsingError.errorBufferNull = function () {
-        return new TlvParsingError('Error parsing data', 'Buffer must NOT be <null>');
+    TlvParserParseError.errorEmpty = function (parameter) {
+        return new TlvParserParseError('Error parsing data', '"' + parameter + '" must not be <null> or ""');
     };
-    TlvParsingError.errorIllegalType = function () {
-        return new TlvParsingError('Error parsing data', 'Biffer parameter is invalid');
+    TlvParserParseError.errorUnsupportedType = function (parameter) {
+        return new TlvParserParseError('Error parsing data', '"' + parameter + '" is an unsupported format');
     };
-    TlvParsingError.errorParsingTagInsufficientData = function (partialTag) {
-        return new TlvParsingError('Error while reading tag for item starting with "' + partialTag.toString('hex').toUpperCase() + '"', 'Need at least 1 additional byte to complete tag');
+    TlvParserParseError.errorInsufficientTagData = function (partialTag) {
+        return new TlvParserParseError('Error while reading tag for item starting with "' + partialTag.toString('hex').toUpperCase() + '"', 'Need at least 1 additional byte to complete tag');
     };
-    TlvParsingError.errorParsingLengthInsufficientData = function (tag, missing) {
-        return new TlvParsingError('Error while reading length for item "' + tag.toString('hex').toUpperCase() + '"', 'Need at least ' + missing + ' addional bytes to read length information');
+    TlvParserParseError.errorInsufficientLengthData = function (tag, missing) {
+        return new TlvParserParseError('Error while reading length for item "' + tag.toString('hex').toUpperCase() + '"', 'Need at least ' + missing + ' addional bytes to read length information');
     };
-    TlvParsingError.errorParsingLengthNumberTooBig = function (tag, given) {
-        return new TlvParsingError('Error while reading length for item "' + tag.toString('hex').toUpperCase() + '"', 'Maximum number of concatenated length bytes supported is 4, present ' + given);
+    TlvParserParseError.errorLengthTooBig = function (tag, given) {
+        return new TlvParserParseError('Error while reading length for item "' + tag.toString('hex').toUpperCase() + '"', 'Maximum number of concatenated length bytes supported is 4, present ' + given);
     };
-    TlvParsingError.errorParsingValueInsufficientData = function (tag, missing) {
-        return new TlvParsingError('Error while reading value for item "' + tag.toString('hex').toUpperCase() + '"', 'Need at least ' + missing + ' addional bytes for reading complete value');
+    TlvParserParseError.errorInsufficientValueData = function (tag, missing) {
+        return new TlvParserParseError('Error while reading value for item "' + tag.toString('hex').toUpperCase() + '"', 'Need at least ' + missing + ' addional bytes for reading complete value');
     };
-    return TlvParsingError;
+    return TlvParserParseError;
 })();
 var TlvParserResult = (function () {
     function TlvParserResult(result, error) {
@@ -519,36 +519,24 @@ var TlvParserResult = (function () {
     return TlvParserResult;
 })();
 exports.TlvParserResult = TlvParserResult;
+var TLV_IGNORE_VALUE = 0x00;
+var TLV_TAG_ONE_BYTE_FLAG = 0x1F;
+var TLV_TAG_HAS_NEXT_BYTE_FLAG = 0x80;
+var TLV_LENGTH_ONE_BYTE_FLAG = 0x80;
+var TLV_LENGTH_ADDITIONAL_BYTES_FLAG = 0x7F;
 var TlvParser = (function () {
     function TlvParser() {
     }
-    TlvParser.prepareParseBuffer = function (buffer) {
-        var preparedParseBuffer = null;
-        if (buffer == null) {
-            preparedParseBuffer = new Buffer(0);
-        }
-        else if (Buffer.isBuffer(buffer)) {
-            preparedParseBuffer = buffer;
-        }
-        else if (typeof buffer === 'string') {
-            preparedParseBuffer = new Buffer(buffer, 'hex');
-        }
-        else {
-            TlvParsingError.errorIllegalType();
-        }
-        return preparedParseBuffer;
-    };
     TlvParser.parseItems = function (buffer) {
         var octetBuffer = new OctetBuffer(buffer);
         var items = [];
-        var errorOccured = false;
         while (octetBuffer.remaining > 0) {
             this.skipZeroBytes(octetBuffer);
             var parseResult = this.parseItem(octetBuffer);
-            if (parseResult.result != null) {
+            if (parseResult.result !== null) {
                 items.push(parseResult.result);
             }
-            if (parseResult.error != null) {
+            if (parseResult.error !== null) {
                 return new TlvParserResult(items, parseResult.error);
             }
         }
@@ -558,7 +546,7 @@ var TlvParser = (function () {
         var peeked;
         while (buffer.remaining > 0) {
             peeked = buffer.peek();
-            if (peeked !== 0x00) {
+            if (peeked !== TLV_IGNORE_VALUE) {
                 break;
             }
             buffer.readUInt8();
@@ -584,64 +572,72 @@ var TlvParser = (function () {
             var tlvItem = TlvFactory.primitiveTlv(tagBuffer, value);
             return new TlvParserResult(tlvItem, valueParsingResult.error);
         }
-        if (type == TlvType.PRIMITIVE) {
-            var tlvItem = TlvFactory.primitiveTlv(tagBuffer, value);
-            return new TlvParserResult(tlvItem, valueParsingResult.error);
-        }
-        else {
+        if (type === TlvType.CONSTRUCTED) {
             var subParsingResult = this.parseItems(value);
             var tlvItem = TlvFactory.constructedTlv(tagBuffer, subParsingResult.result);
             return new TlvParserResult(tlvItem, subParsingResult.error);
         }
+        else {
+            var tlvItem = TlvFactory.primitiveTlv(tagBuffer, value);
+            return new TlvParserResult(tlvItem, valueParsingResult.error);
+        }
     };
     TlvParser.parseTag = function (buffer) {
         if (buffer.remaining === 0) {
-            return new TlvParserResult(null, TlvParsingError.errorParsingTagInsufficientData(new Buffer(0)));
+            return new TlvParserResult(null, TlvParserParseError.errorInsufficientTagData(new Buffer(0)));
         }
         var tagBuffer = new OctetBuffer();
         var tagByte = buffer.readUInt8();
         tagBuffer.writeUInt8(tagByte);
-        if ((tagByte & 0x1F) !== 0x1F) {
+        if ((tagByte & TLV_TAG_ONE_BYTE_FLAG) !== TLV_TAG_ONE_BYTE_FLAG) {
             return new TlvParserResult(tagBuffer.backingBuffer, null);
         }
         do {
             if (buffer.remaining === 0) {
-                return new TlvParserResult(tagBuffer.backingBuffer, TlvParsingError.errorParsingTagInsufficientData(tagBuffer.backingBuffer));
+                return new TlvParserResult(tagBuffer.backingBuffer, TlvParserParseError.errorInsufficientTagData(tagBuffer.backingBuffer));
             }
             tagByte = buffer.readUInt8();
             tagBuffer.writeUInt8(tagByte);
-        } while ((tagByte & 0x80) == 0x80);
+        } while ((tagByte & TLV_TAG_HAS_NEXT_BYTE_FLAG) == TLV_TAG_HAS_NEXT_BYTE_FLAG);
         return new TlvParserResult(tagBuffer.backingBuffer, null);
     };
     TlvParser.parseLength = function (buffer, tag) {
-        if (buffer.remaining == 0) {
-            return new TlvParserResult(null, TlvParsingError.errorParsingLengthInsufficientData(tag, 1));
+        if (buffer.remaining === 0) {
+            return new TlvParserResult(null, TlvParserParseError.errorInsufficientLengthData(tag, 1));
         }
         var length = buffer.readUInt8();
-        if ((length & 0x80) != 0x80) {
+        if ((length & TLV_LENGTH_ONE_BYTE_FLAG) !== TLV_LENGTH_ONE_BYTE_FLAG) {
             return new TlvParserResult(length, null);
         }
-        var bytesToRead = (length & 0x7F);
+        var bytesToRead = (length & TLV_LENGTH_ADDITIONAL_BYTES_FLAG);
         if (bytesToRead > 4) {
-            return new TlvParserResult(null, TlvParsingError.errorParsingLengthNumberTooBig(tag, bytesToRead));
+            return new TlvParserResult(null, TlvParserParseError.errorLengthTooBig(tag, bytesToRead));
         }
         if (buffer.remaining < bytesToRead) {
-            return new TlvParserResult(null, TlvParsingError.errorParsingLengthInsufficientData(tag, bytesToRead - buffer.remaining));
+            return new TlvParserResult(null, TlvParserParseError.errorInsufficientLengthData(tag, bytesToRead - buffer.remaining));
         }
-        var nextByte;
         length = 0;
-        for (var i = 0; i < bytesToRead; i++) {
-            nextByte = buffer.readUInt8();
-            length = length << 8;
-            length = length | nextByte;
+        switch (bytesToRead) {
+            case 1:
+                length = buffer.readUInt8();
+                break;
+            case 2:
+                length = buffer.readUInt16();
+                break;
+            case 3:
+                length = buffer.readUInt24();
+                break;
+            case 4:
+                length = buffer.readUInt32();
+                break;
         }
         return new TlvParserResult(length, null);
     };
     TlvParser.parseValue = function (buffer, length, tag) {
         if (buffer.remaining < length) {
-            var remaining = buffer.remaining;
+            var missing = length - buffer.remaining;
             var partialValue = buffer.readBufferRemainig();
-            return new TlvParserResult(partialValue, TlvParsingError.errorParsingValueInsufficientData(tag, length - remaining));
+            return new TlvParserResult(partialValue, TlvParserParseError.errorInsufficientValueData(tag, missing));
         }
         var value = buffer.readBuffer(length);
         return new TlvParserResult(value, null);
@@ -730,18 +726,18 @@ var TlvSerializer = (function () {
     return TlvSerializer;
 })();
 exports.TlvSerializer = TlvSerializer;
-var TlvFactoryParsingError = (function () {
-    function TlvFactoryParsingError(name, message, partialTlv) {
+var TlvFactoryParseError = (function () {
+    function TlvFactoryParseError(name, message, partialTlv) {
         this.name = name;
         this.message = message;
         this.partialTlv = partialTlv;
     }
-    TlvFactoryParsingError.errorPartialResult = function (error, partialTlv) {
-        return new TlvFactoryParsingError(error.name, error.message, partialTlv);
+    TlvFactoryParseError.errorPartialResult = function (error, partialTlv) {
+        return new TlvFactoryParseError(error.name, error.message, partialTlv);
     };
-    return TlvFactoryParsingError;
+    return TlvFactoryParseError;
 })();
-exports.TlvFactoryParsingError = TlvFactoryParsingError;
+exports.TlvFactoryParseError = TlvFactoryParseError;
 var TlvFactoryTlvError = (function () {
     function TlvFactoryTlvError(name, message) {
         this.name = name;
@@ -762,17 +758,17 @@ var TlvFactoryTlvError = (function () {
     return TlvFactoryTlvError;
 })();
 exports.TlvFactoryTlvError = TlvFactoryTlvError;
-var TlvFactorySerializationError = (function () {
-    function TlvFactorySerializationError(name, message) {
+var TlvFactorySerializeError = (function () {
+    function TlvFactorySerializeError(name, message) {
         this.name = name;
         this.message = message;
     }
-    TlvFactorySerializationError.errorUnsupportedType = function (parameter) {
-        return new TlvFactorySerializationError('Error serializing ' + parameter, '"' + parameter + '" parameter type provided is not supported');
+    TlvFactorySerializeError.errorUnsupportedType = function (parameter) {
+        return new TlvFactorySerializeError('Error serializing ' + parameter, '"' + parameter + '" parameter type provided is not supported');
     };
-    return TlvFactorySerializationError;
+    return TlvFactorySerializeError;
 })();
-exports.TlvFactorySerializationError = TlvFactorySerializationError;
+exports.TlvFactorySerializeError = TlvFactorySerializeError;
 var Tlv = (function () {
     function Tlv(tag, payload) {
         var tagBuffer = tag;
@@ -805,7 +801,7 @@ var TlvFactory = (function () {
         var verifiedValue = TlvFactoryHelper.verifyParseValue(buffer);
         var parsedResult = TlvParser.parseItems(verifiedValue);
         if (parsedResult.error != null) {
-            throw TlvFactoryParsingError.errorPartialResult(parsedResult.error, parsedResult.result);
+            throw TlvFactoryParseError.errorPartialResult(parsedResult.error, parsedResult.result);
         }
         return parsedResult.result;
     };

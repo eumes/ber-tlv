@@ -3,11 +3,11 @@ import { TlvParser, TlvParserResult } from './TlvParser';
 import { TlvSerializer } from './TlvSerializer';
 
 
-export class TlvFactoryParsingError implements Error {
+export class TlvFactoryParseError implements Error {
     constructor(public name: string, public message: string, public partialTlv: ITlv[]) {}
 
-    static errorPartialResult(error: Error, partialTlv: ITlv[]): TlvFactoryParsingError{
-        return new TlvFactoryParsingError(error.name, error.message, partialTlv);
+    static errorPartialResult(error: Error, partialTlv: ITlv[]): TlvFactoryParseError{
+        return new TlvFactoryParseError(error.name, error.message, partialTlv);
     }
 }
 
@@ -28,11 +28,11 @@ export class TlvFactoryTlvError implements Error {
     }
 }
 
-export class TlvFactorySerializationError implements Error {
+export class TlvFactorySerializeError implements Error {
     constructor(public name: string, public message: string) {}
 
-    static errorUnsupportedType(parameter: string): TlvFactorySerializationError {
-        return new TlvFactorySerializationError('Error serializing ' + parameter, '"' + parameter + '" parameter type provided is not supported');
+    static errorUnsupportedType(parameter: string): TlvFactorySerializeError {
+        return new TlvFactorySerializeError('Error serializing ' + parameter, '"' + parameter + '" parameter type provided is not supported');
     }
 }
 
@@ -79,7 +79,7 @@ export class TlvFactory {
         var verifiedValue: Buffer = TlvFactoryHelper.verifyParseValue(buffer);
         var parsedResult: TlvParserResult<ITlv[]> = TlvParser.parseItems(verifiedValue);
         if (parsedResult.error != null){
-            throw TlvFactoryParsingError.errorPartialResult(parsedResult.error, parsedResult.result);
+            throw TlvFactoryParseError.errorPartialResult(parsedResult.error, parsedResult.result);
         }
         return parsedResult.result;
     }

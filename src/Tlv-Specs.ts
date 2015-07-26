@@ -21,7 +21,7 @@ describe('Tlv', () => {
         var error: Error;
 
         it('can parse 1 byte tag primitve tlv object', () => {
-            buffer = tlvGenerator('5A', '02', '2020');
+            buffer = tlvGenerator('005A', '02', '2020');
             items = TlvFactory.parse(buffer);
 
             expect(items).to.exist;

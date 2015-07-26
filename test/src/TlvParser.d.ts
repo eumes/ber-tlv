@@ -6,7 +6,6 @@ export declare class TlvParserResult<T> {
     constructor(result: T, error: Error);
 }
 export declare class TlvParser {
-    static prepareParseBuffer(buffer: Buffer | string): Buffer;
     static parseItems(buffer: Buffer): TlvParserResult<ITlv[]>;
     static skipZeroBytes(buffer: OctetBuffer): OctetBuffer;
     static parseItem(buffer: OctetBuffer): TlvParserResult<ITlv>;
