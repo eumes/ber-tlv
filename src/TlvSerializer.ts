@@ -1,19 +1,23 @@
 import { ITlv, TlvType, TlvClass, TlvHelper } from './Tlv';
 import { OctetBuffer } from '../node_modules/octet-buffer/dist/octet-buffer';
 
-class TlvSerializationError implements Error {
+export class TlvSerializerSerializeError implements Error {
     constructor(public name: string, public message: string) {}
 
-    static errorPayloadToBig(tag: string, requested: number, maximum: number): TlvSerializationError {
-      return new TlvSerializationError('Error while serializing item ' + tag + '"', 'Present length is ' + requested + ', maximum supported ' + maximum);
+    static errorPayloadToBig(tag: string, requested: number, maximum: number): TlvSerializerSerializeError {
+      return new TlvSerializerSerializeError('Error while serializing item ' + tag + '"', 'Provided length is ' + requested + ', maximum supported ' + maximum);
     }
 }
 
+const TLV_SERIALIZE_MULTIBYTE_FLAG = 0x80;
+const SERIALIZE_UINT8_MAX: number = 0xFF;
+const SERIALIZE_UINT16_MAX: number = 0xFFFF;
+const SERIALIZE_UINT24_MAX: number = 0xFFFFFF;
+const SERIALIZE_UINT32_MAX: number = 0xFFFFFFFF;
 
 export class TlvSerializer {
 
     static serializeItems(items: ITlv[]): Buffer {
-
         var serializedItems: Buffer[] = [];
         for (var item of items){
             var itemBuffer: Buffer = TlvSerializer.serializeItem(item);
@@ -25,7 +29,6 @@ export class TlvSerializer {
     }
 
     static serializeItem(item: ITlv): Buffer {
-
         var serializedItem: Buffer;
         if (item.type === TlvType.CONSTRUCTED){
             serializedItem = TlvSerializer.serializeConstrucedItem(item);
@@ -35,8 +38,6 @@ export class TlvSerializer {
 
         return serializedItem;
     }
-
-
 
     static serializeConstrucedItem(item: ITlv): Buffer {
         var serializedItems: Buffer[] = [];
@@ -62,35 +63,32 @@ export class TlvSerializer {
     }
 
     static lengthBufferForLengt(tag: string, length: number): Buffer{
-
-        //TODO: in the worst case we create an additional buffer internally, rethink this approach
         var octetBuffer: OctetBuffer = new OctetBuffer(new Buffer(1));
 
-        if (length < 0x80){
+        if (length < TLV_SERIALIZE_MULTIBYTE_FLAG){
             octetBuffer.writeUInt8(length);
         }
-        else if (length <= 0xFF){
-            octetBuffer.writeUInt8(0x81);
+        else if (length <= SERIALIZE_UINT8_MAX){
+            octetBuffer.writeUInt8(TLV_SERIALIZE_MULTIBYTE_FLAG | 0x01);
             octetBuffer.writeUInt8(length);
         }
-        else if (length <= 0xFFFF){
-          octetBuffer.writeUInt8(0x82);
+        else if (length <= SERIALIZE_UINT16_MAX){
+          octetBuffer.writeUInt8(TLV_SERIALIZE_MULTIBYTE_FLAG | 0x02);
           octetBuffer.writeUInt16(length);
         }
-        else if (length <= 0xFFFFFF){
-          octetBuffer.writeUInt8(0x83);
+        else if (length <= SERIALIZE_UINT24_MAX){
+          octetBuffer.writeUInt8(TLV_SERIALIZE_MULTIBYTE_FLAG | 0x03);
           octetBuffer.writeUInt24(length);
         }
-        else if (length <= 0xFFFFFFFF){
-          octetBuffer.writeUInt8(0x84);
+        else if (length <= SERIALIZE_UINT32_MAX){
+          octetBuffer.writeUInt8(TLV_SERIALIZE_MULTIBYTE_FLAG | 0x04);
           octetBuffer.writeUInt32(length);
         }
         else {
-            throw TlvSerializationError.errorPayloadToBig(tag, length, 0xFFFFFFFF);
+            throw TlvSerializerSerializeError.errorPayloadToBig(tag, length, SERIALIZE_UINT32_MAX);
         }
 
         return octetBuffer.backingBuffer;
     }
-
 
 }
