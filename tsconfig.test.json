@@ -1,0 +1,37 @@
+{
+    "compilerOptions": {
+        "declaration": true,
+        "module": "commonjs",
+        "removeComments": true,
+        "sourceMap": false,
+        "target": "es5",
+        "noImplicitAny": true
+    },
+    "compileOnSave": false,
+    "files": [
+        "./typings/node/node.d.ts",
+        "./typings/chai/chai.d.ts",
+        "./typings/mocha/mocha.d.ts",
+
+        "./node_modules/octet-buffer/dist/octet-buffer.d.ts",
+
+        "./src/ByteHelper.ts",
+        "./src/Tlv.ts",
+        "./src/TlvAnnotation.ts",
+        "./src/Tlv-Specs.ts",
+        "./src/TlvAnnotation-Specs.ts"
+    ],
+    "bundles": {
+        "ber-tlv-test": {
+            "files": [
+                "./typings/node/node.d.ts",
+                "./typings/chai/chai.d.ts",
+                "./typings/mocha/mocha.d.ts",
+                "./node_modules/octet-buffer/dist/octet-buffer.d.ts",
+
+                "./src/Tlv-Specs.ts",
+                "./src/TlvAnnotation-Specs.ts"
+            ]
+        }
+    }
+}
