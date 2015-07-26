@@ -8,9 +8,8 @@ export declare enum AnnotationValueFormat {
     NUMERIC = 5,
     VARIABLE_BITS = 6,
     VARIABLE_BYTES = 7,
-    DOL = 8,
-    YYMMDD = 9,
-    HHMMSS = 10,
+    YYMMDD = 8,
+    HHMMSS = 9,
 }
 export declare enum AnnotationValueReference {
     ISO_3166 = 0,

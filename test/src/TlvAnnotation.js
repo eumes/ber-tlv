@@ -1,7 +1,7 @@
 var currencyLookup = require('country-data').lookup;
 var countryLookup = require('i18n-iso-countries');
 var Tlv_1 = require('./Tlv');
-var ByteHelper = require('./ByteHelper');
+var ByteHelper_1 = require('./ByteHelper');
 var octet_buffer_1 = require('../node_modules/octet-buffer/dist/octet-buffer');
 (function (AnnotationValueFormat) {
     AnnotationValueFormat[AnnotationValueFormat["ALPHABETIC"] = 0] = "ALPHABETIC";
@@ -12,9 +12,8 @@ var octet_buffer_1 = require('../node_modules/octet-buffer/dist/octet-buffer');
     AnnotationValueFormat[AnnotationValueFormat["NUMERIC"] = 5] = "NUMERIC";
     AnnotationValueFormat[AnnotationValueFormat["VARIABLE_BITS"] = 6] = "VARIABLE_BITS";
     AnnotationValueFormat[AnnotationValueFormat["VARIABLE_BYTES"] = 7] = "VARIABLE_BYTES";
-    AnnotationValueFormat[AnnotationValueFormat["DOL"] = 8] = "DOL";
-    AnnotationValueFormat[AnnotationValueFormat["YYMMDD"] = 9] = "YYMMDD";
-    AnnotationValueFormat[AnnotationValueFormat["HHMMSS"] = 10] = "HHMMSS";
+    AnnotationValueFormat[AnnotationValueFormat["YYMMDD"] = 8] = "YYMMDD";
+    AnnotationValueFormat[AnnotationValueFormat["HHMMSS"] = 9] = "HHMMSS";
 })(exports.AnnotationValueFormat || (exports.AnnotationValueFormat = {}));
 var AnnotationValueFormat = exports.AnnotationValueFormat;
 (function (AnnotationValueReference) {
@@ -277,11 +276,11 @@ var DefaultTlvAnnotationProvider = (function () {
             var value = null;
             if (typeof (resourceComponent.bitmask) !== 'undefined' && resourceComponent.bitmask !== null) {
                 selector = resourceComponent.bitmask;
-                triggered = ByteHelper.hexStringMatchesHexBitflags(mappedValue, resourceComponent.bitmask);
+                triggered = ByteHelper_1.ByteHelper.hexStringMatchesHexBitflags(mappedValue, resourceComponent.bitmask);
             }
             else if (typeof (resourceComponent.bitpattern) !== 'undefined' && resourceComponent.bitpattern !== null) {
                 selector = resourceComponent.bitpattern;
-                triggered = ByteHelper.hexStringMatchesHexBitpattern(mappedValue, resourceComponent.bitpattern);
+                triggered = ByteHelper_1.ByteHelper.hexStringMatchesHexBitpattern(mappedValue, resourceComponent.bitpattern);
             }
             else if (typeof (resourceComponent.pattern) !== 'undefined' && resourceComponent.pattern !== null) {
                 selector = resourceComponent.pattern.toUpperCase();

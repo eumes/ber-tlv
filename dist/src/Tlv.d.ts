@@ -17,10 +17,10 @@ export interface ITlv {
     serialize(): Buffer;
 }
 export declare class TlvFactory {
-    static primitiveTlv(tag: string, value: Buffer): ITlv;
-    static constructedTlv(tag: string, value: Buffer, items: ITlv[]): ITlv;
-    static parseVerbose(buffer: Buffer): ITlvParsingResult;
-    static parse(buffer: Buffer): ITlv[];
+    static primitiveTlv(tag: Buffer | string, value?: Buffer | string): ITlv;
+    static constructedTlv(tag: Buffer | string, items?: ITlv[]): ITlv;
+    static parseVerbose(buffer: Buffer | string): ITlvParsingResult;
+    static parse(buffer: Buffer | string): ITlv[];
 }
 export interface ITlvParsingResult {
     result: ITlv[];
