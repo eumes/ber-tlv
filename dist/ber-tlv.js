@@ -1,3 +1,257 @@
+(function (TlvType) {
+    TlvType[TlvType["PRIMITIVE"] = 0] = "PRIMITIVE";
+    TlvType[TlvType["CONSTRUCTED"] = 1] = "CONSTRUCTED";
+})(exports.TlvType || (exports.TlvType = {}));
+var TlvType = exports.TlvType;
+(function (TlvClass) {
+    TlvClass[TlvClass["UNIVERSAL"] = 0] = "UNIVERSAL";
+    TlvClass[TlvClass["APPLICATION"] = 1] = "APPLICATION";
+    TlvClass[TlvClass["CONTEXT_SPECIFIC"] = 2] = "CONTEXT_SPECIFIC";
+    TlvClass[TlvClass["PRIVATE"] = 3] = "PRIVATE";
+})(exports.TlvClass || (exports.TlvClass = {}));
+var TlvClass = exports.TlvClass;
+var TLV_TAG_CONSTRUCTED_FLAG = 0x20;
+var TLV_TAG_CLASS_FLAG = 0xC0;
+var TLV_TAG_CLASS_UNIVERSAL = 0x00;
+var TLV_TAG_CLASS_APPLICATION = 0x40;
+var TLV_TAG_CLASS_CONTEXT_SPECIFIC = 0x80;
+var TLV_TAG_CLASS_PRIVATE = 0xC0;
+var TlvHelper = (function () {
+    function TlvHelper() {
+    }
+    TlvHelper.typeFromTag = function (tagBuffer) {
+        var firstTagByte = tagBuffer.readUInt8(0);
+        var typeIdentifier = (firstTagByte & TLV_TAG_CONSTRUCTED_FLAG);
+        if (typeIdentifier === TLV_TAG_CONSTRUCTED_FLAG) {
+            return TlvType.CONSTRUCTED;
+        }
+        else {
+            return TlvType.PRIMITIVE;
+        }
+    };
+    TlvHelper.classFromTag = function (tagBuffer) {
+        var firstTagByte = tagBuffer.readUInt8(0);
+        var classIdentifier = (firstTagByte & TLV_TAG_CLASS_FLAG);
+        if (classIdentifier === TLV_TAG_CLASS_UNIVERSAL) {
+            return TlvClass.UNIVERSAL;
+        }
+        else if (classIdentifier === TLV_TAG_CLASS_APPLICATION) {
+            return TlvClass.APPLICATION;
+        }
+        else if (classIdentifier === TLV_TAG_CLASS_CONTEXT_SPECIFIC) {
+            return TlvClass.CONTEXT_SPECIFIC;
+        }
+        else {
+            return TlvClass.PRIVATE;
+        }
+    };
+    return TlvHelper;
+})();
+exports.TlvHelper = TlvHelper;
+var TlvFactoryParseError = (function () {
+    function TlvFactoryParseError(name, message, partialTlv) {
+        this.name = name;
+        this.message = message;
+        this.partialTlv = partialTlv;
+    }
+    TlvFactoryParseError.errorPartialResult = function (error, partialTlv) {
+        return new TlvFactoryParseError(error.name, error.message, partialTlv);
+    };
+    return TlvFactoryParseError;
+})();
+exports.TlvFactoryParseError = TlvFactoryParseError;
+var TlvFactoryTlvError = (function () {
+    function TlvFactoryTlvError(name, message) {
+        this.name = name;
+        this.message = message;
+    }
+    TlvFactoryTlvError.errorEmpty = function (parameter) {
+        return new TlvFactoryTlvError('Error creating tlv item', '"' + parameter + '" must not be <null> or ""');
+    };
+    TlvFactoryTlvError.errorUnevenBytes = function (parameter, given) {
+        return new TlvFactoryTlvError('Error creating tlv item', '"' + parameter + '" must be an even number, given "' + given + '"');
+    };
+    TlvFactoryTlvError.errorContainsNonHex = function (parameter, given) {
+        return new TlvFactoryTlvError('Error creating tlv item', '"' + parameter + '" must only contain hex characters, given "' + given + '"');
+    };
+    TlvFactoryTlvError.errorUnsupportedType = function (parameter) {
+        return new TlvFactoryTlvError('Error creating tlv item', '"' + parameter + '" is an unsupported format');
+    };
+    return TlvFactoryTlvError;
+})();
+exports.TlvFactoryTlvError = TlvFactoryTlvError;
+var TlvFactorySerializeError = (function () {
+    function TlvFactorySerializeError(name, message) {
+        this.name = name;
+        this.message = message;
+    }
+    TlvFactorySerializeError.errorUnsupportedType = function (parameter) {
+        return new TlvFactorySerializeError('Error serializing ' + parameter, '"' + parameter + '" parameter type provided is not supported');
+    };
+    return TlvFactorySerializeError;
+})();
+exports.TlvFactorySerializeError = TlvFactorySerializeError;
+var Tlv = (function () {
+    function Tlv(tag, payload) {
+        var tagBuffer = tag;
+        var tagString = tagBuffer.toString('hex').toUpperCase();
+        ;
+        this.tag = tagString;
+        this.type = TlvHelper.typeFromTag(tagBuffer);
+        this.class = TlvHelper.classFromTag(tagBuffer);
+        this.value = TlvFactoryHelper.verifyUncheckedTlvPrimitivePayload(this.type, payload);
+        this.items = TlvFactoryHelper.verifyUncheckedTlvConstructedPayload(this.type, payload);
+    }
+    return Tlv;
+})();
+var TlvFactory = (function () {
+    function TlvFactory() {
+    }
+    TlvFactory.primitiveTlv = function (tag, value) {
+        var verifiedTag = TlvFactoryHelper.verifyGenericTag(tag);
+        var verifiedValue = TlvFactoryHelper.verifyPrimitiveValue(value);
+        var primitiveTlv = new Tlv(verifiedTag, verifiedValue);
+        return primitiveTlv;
+    };
+    TlvFactory.constructedTlv = function (tag, items) {
+        var verifiedTag = TlvFactoryHelper.verifyGenericTag(tag);
+        var verifiedItems = TlvFactoryHelper.verifyConstructedItems(items);
+        var constructedTlv = new Tlv(verifiedTag, verifiedItems);
+        return constructedTlv;
+    };
+    TlvFactory.parse = function (buffer) {
+        var verifiedValue = TlvFactoryHelper.verifyParseValue(buffer);
+        var parsedResult = TlvParser.parseItems(verifiedValue);
+        if (parsedResult.error != null) {
+            throw TlvFactoryParseError.errorPartialResult(parsedResult.error, parsedResult.result);
+        }
+        return parsedResult.result;
+    };
+    TlvFactory.serialize = function (items) {
+        var verifiedItems = TlvFactoryHelper.verifySerializeItems(items);
+        var serializedItems = TlvSerializer.serializeItems(verifiedItems);
+        return serializedItems;
+    };
+    return TlvFactory;
+})();
+exports.TlvFactory = TlvFactory;
+var TlvFactoryHelper = (function () {
+    function TlvFactoryHelper() {
+    }
+    TlvFactoryHelper.verifyUncheckedTlvPrimitivePayload = function (type, payload) {
+        if (type !== TlvType.PRIMITIVE) {
+            return null;
+        }
+        if (payload == null) {
+            return new Buffer(0);
+        }
+        return payload;
+    };
+    TlvFactoryHelper.verifyUncheckedTlvConstructedPayload = function (type, payload) {
+        if (type !== TlvType.CONSTRUCTED) {
+            return null;
+        }
+        if (payload == null) {
+            return [];
+        }
+        return payload;
+    };
+    TlvFactoryHelper.verifyGenericTag = function (tag) {
+        if (tag == null) {
+            throw TlvFactoryTlvError.errorEmpty('tag');
+        }
+        var verifiedTag = null;
+        if (Buffer.isBuffer(tag)) {
+            verifiedTag = TlvFactoryHelper.fromBuffer(tag);
+        }
+        else if (typeof tag === 'string') {
+            verifiedTag = TlvFactoryHelper.fromString('tag', tag);
+        }
+        else {
+            throw TlvFactoryTlvError.errorUnsupportedType('tag');
+        }
+        return verifiedTag;
+    };
+    TlvFactoryHelper.verifyPrimitiveValue = function (buffer) {
+        var verifiedValue = null;
+        if (buffer == null) {
+            verifiedValue = TlvFactoryHelper.emptyBuffer();
+        }
+        else if (Buffer.isBuffer(buffer)) {
+            verifiedValue = TlvFactoryHelper.fromBuffer(buffer);
+        }
+        else if (typeof buffer === 'string') {
+            verifiedValue = TlvFactoryHelper.fromString('value', buffer);
+        }
+        else {
+            throw TlvFactoryTlvError.errorUnsupportedType('value');
+        }
+        return verifiedValue;
+    };
+    TlvFactoryHelper.verifyConstructedItems = function (items) {
+        var verifiedItems = null;
+        if (items == null) {
+            verifiedItems = [];
+        }
+        if (Array.isArray(items)) {
+            verifiedItems = items;
+        }
+        else {
+            throw TlvFactoryTlvError.errorUnsupportedType('items');
+        }
+        return verifiedItems;
+    };
+    TlvFactoryHelper.verifyParseValue = function (buffer) {
+        var verifiedValue = null;
+        if (buffer == null) {
+            verifiedValue = TlvFactoryHelper.emptyBuffer();
+        }
+        else if (Buffer.isBuffer(buffer)) {
+            verifiedValue = TlvFactoryHelper.fromBuffer(buffer);
+        }
+        else if (typeof buffer === 'string') {
+            verifiedValue = TlvFactoryHelper.fromString('value', buffer);
+        }
+        else {
+            throw TlvFactoryTlvError.errorUnsupportedType('buffer');
+        }
+        return verifiedValue;
+    };
+    TlvFactoryHelper.verifySerializeItems = function (items) {
+        var verifiedItems = null;
+        if (items == null) {
+            throw TlvFactoryTlvError.errorUnsupportedType('items');
+        }
+        if (Array.isArray(items)) {
+            verifiedItems = items;
+        }
+        else {
+            verifiedItems = [items];
+        }
+        return verifiedItems;
+    };
+    TlvFactoryHelper.emptyBuffer = function () {
+        return new Buffer(0);
+    };
+    TlvFactoryHelper.fromBuffer = function (buffer) {
+        var verifiedBuffer = buffer;
+        return verifiedBuffer;
+    };
+    TlvFactoryHelper.fromString = function (parameter, string) {
+        if (string.length % 2 !== 0) {
+            throw TlvFactoryTlvError.errorUnevenBytes(parameter, string);
+        }
+        var verifiedString = null;
+        try {
+            verifiedString = new Buffer(string, 'hex');
+        }
+        catch (error) {
+            throw TlvFactoryTlvError.errorContainsNonHex(parameter, string);
+        }
+        return verifiedString;
+    };
+    return TlvFactoryHelper;
+})();
 var OctetBufferError = (function () {
     function OctetBufferError(name, message) {
         this.name = name;
@@ -157,6 +411,11 @@ var OctetBuffer = (function () {
     OctetBuffer.prototype.serialize = function () {
         return this._backingBuffer.toString('hex').toUpperCase();
     };
+    OctetBuffer.prototype.peek = function () {
+        this.checkRemainingBytesAndThrow('uint8', UINT8_BYTES);
+        var uint = this.backingBuffer.readUInt8(this.position);
+        return uint;
+    };
     OctetBuffer.prototype.extendBackingBufferToAcceptAdditionalBytes = function (additionalBytes) {
         if (this.remaining >= additionalBytes) {
             return;
@@ -227,145 +486,30 @@ var OctetBuffer = (function () {
     return OctetBuffer;
 })();
 exports.OctetBuffer = OctetBuffer;
-var ByteHelper = (function () {
-    function ByteHelper() {
-    }
-    ByteHelper.hexStringMatchesHexBitflags = function (param1, param2) {
-        return true;
-    };
-    ;
-    ByteHelper.hexStringMatchesHexBitpattern = function (param1, param2) {
-        return true;
-    };
-    ;
-    return ByteHelper;
-})();
-exports.ByteHelper = ByteHelper;
-(function (TlvType) {
-    TlvType[TlvType["PRIMITIVE"] = 0] = "PRIMITIVE";
-    TlvType[TlvType["CONSTRUCTED"] = 1] = "CONSTRUCTED";
-})(exports.TlvType || (exports.TlvType = {}));
-var TlvType = exports.TlvType;
-(function (TlvClass) {
-    TlvClass[TlvClass["UNIVERSAL"] = 0] = "UNIVERSAL";
-    TlvClass[TlvClass["APPLICATION"] = 1] = "APPLICATION";
-    TlvClass[TlvClass["CONTEXT_SPECIFIC"] = 2] = "CONTEXT_SPECIFIC";
-    TlvClass[TlvClass["PRIVATE"] = 3] = "PRIVATE";
-})(exports.TlvClass || (exports.TlvClass = {}));
-var TlvClass = exports.TlvClass;
-var Tlv = (function () {
-    function Tlv(tag, payload) {
-        var tagBuffer = tag;
-        var tagString = tagBuffer.toString('hex').toUpperCase();
-        ;
-        this.tag = tagString;
-        this.type = TlvParser.typeFromTag(tagBuffer);
-        this.class = TlvParser.classFromTag(tagBuffer);
-        if (Buffer.isBuffer(payload)) {
-            this.value = payload;
-            this.items = null;
-        }
-        else if (Array.isArray(payload)) {
-            this.value = null;
-            this.items = payload;
-        }
-        else {
-            this.items = null;
-            this.value = null;
-        }
-    }
-    Tlv.prototype.serialize = function () {
-        if (this.type === TlvType.CONSTRUCTED) {
-            return TlvSerializer.serializeConstrucedItem(this);
-        }
-        return TlvSerializer.serializePrimitiveItem(this);
-    };
-    return Tlv;
-})();
-var TlvFactory = (function () {
-    function TlvFactory() {
-    }
-    TlvFactory.primitiveTlv = function (tag, value) {
-        var tagBuffer = TlvParser.prepareTag(tag);
-        var valueBuffer = TlvParser.prepareBuffer(valueBuffer);
-        return new Tlv(tagBuffer, valueBuffer);
-    };
-    TlvFactory.constructedTlv = function (tag, items) {
-        var tagBuffer = TlvParser.prepareTag(tag);
-        var itemsArray = TlvParser.prepareItems(items);
-        return new Tlv(tagBuffer, itemsArray);
-    };
-    TlvFactory.parseVerbose = function (buffer) {
-        var parseBuffer = TlvParser.prepareParseBuffer(buffer);
-        var octetBuffer = new OctetBuffer(parseBuffer);
-        var deserializeResult = TlvParser.parseItems(octetBuffer);
-        var result = new TlvParsingResult(deserializeResult.result, deserializeResult.error);
-        return result;
-    };
-    TlvFactory.parse = function (buffer) {
-        var result = this.parseVerbose(buffer);
-        if (result.error !== null) {
-            return null;
-        }
-        return result.result;
-    };
-    return TlvFactory;
-})();
-exports.TlvFactory = TlvFactory;
-var TlvParsingResult = (function () {
-    function TlvParsingResult(result, error) {
-        this.result = result;
-        this.error = error;
-    }
-    return TlvParsingResult;
-})();
-var TlvError = (function () {
-    function TlvError(name, message) {
+var TlvParserParseError = (function () {
+    function TlvParserParseError(name, message) {
         this.name = name;
         this.message = message;
     }
-    TlvError.errorTagEmpty = function () {
-        return new TlvParsingError('Error creating tag', 'Tag must NOT be <null> or ""');
+    TlvParserParseError.errorEmpty = function (parameter) {
+        return new TlvParserParseError('Error parsing data', '"' + parameter + '" must not be <null> or ""');
     };
-    TlvError.errorTagUnevenBytes = function (tag) {
-        return new TlvParsingError('Error creating tag', 'Tag must be an even number, given ' + tag);
+    TlvParserParseError.errorUnsupportedType = function (parameter) {
+        return new TlvParserParseError('Error parsing data', '"' + parameter + '" is an unsupported format');
     };
-    TlvError.errorTagContainsNonHex = function (tag) {
-        return new TlvParsingError('Error creating tag', 'Tag must only contain hex characters, given ' + tag);
+    TlvParserParseError.errorInsufficientTagData = function (partialTag) {
+        return new TlvParserParseError('Error while reading tag for item starting with "' + partialTag.toString('hex').toUpperCase() + '"', 'Need at least 1 additional byte to complete tag');
     };
-    return TlvError;
-})();
-var TlvSerializationError = (function () {
-    function TlvSerializationError(name, message) {
-        this.name = name;
-        this.message = message;
-    }
-    TlvSerializationError.errorPayloadToBig = function (tag, requested, maximum) {
-        return new TlvSerializationError('Error while serializing item ' + tag + '"', 'Present length is ' + requested + ', maximum supported ' + maximum);
+    TlvParserParseError.errorInsufficientLengthData = function (tag, missing) {
+        return new TlvParserParseError('Error while reading length for item "' + tag.toString('hex').toUpperCase() + '"', 'Need at least ' + missing + ' addional bytes to read length information');
     };
-    return TlvSerializationError;
-})();
-var TlvParsingError = (function () {
-    function TlvParsingError(name, message) {
-        this.name = name;
-        this.message = message;
-    }
-    TlvParsingError.errorBufferNull = function () {
-        return new TlvParsingError('Error parsing data', 'Buffer must NOT be <null>');
+    TlvParserParseError.errorLengthTooBig = function (tag, given) {
+        return new TlvParserParseError('Error while reading length for item "' + tag.toString('hex').toUpperCase() + '"', 'Maximum number of concatenated length bytes supported is 4, present ' + given);
     };
-    TlvParsingError.errorParsingTagInsufficientData = function (partialTag) {
-        return new TlvParsingError('Error while reading tag for item starting with "' + partialTag.toString('hex').toUpperCase() + '"', 'Need at least 1 additional byte to complete tag');
+    TlvParserParseError.errorInsufficientValueData = function (tag, missing) {
+        return new TlvParserParseError('Error while reading value for item "' + tag.toString('hex').toUpperCase() + '"', 'Need at least ' + missing + ' addional bytes for reading complete value');
     };
-    TlvParsingError.errorParsingLengthInsufficientData = function (tag, missing) {
-        return new TlvParsingError('Error while reading length for item "' + tag.toString('hex').toUpperCase() + '"', 'Need at least ' + missing + ' addional bytes to read length information');
-    };
-    TlvParsingError.errorParsingLengthNumberTooBig = function (tag, given) {
-        return new TlvParsingError('Error while reading length for item "' + tag.toString('hex').toUpperCase() + '"', 'Maximum number of concatenated length bytes supported is 4, present ' + given);
-    };
-    TlvParsingError.errorParsingValueInsufficientData = function (tag, missing) {
-        return new TlvParsingError('Error while reading value for item "' + tag.toString('hex').toUpperCase() + '"', 'Need at least ' + missing + ' addional bytes for reading complete value');
-    };
-    return TlvParsingError;
+    return TlvParserParseError;
 })();
 var TlvParserResult = (function () {
     function TlvParserResult(result, error) {
@@ -374,87 +518,40 @@ var TlvParserResult = (function () {
     }
     return TlvParserResult;
 })();
+exports.TlvParserResult = TlvParserResult;
+var TLV_IGNORE_VALUE = 0x00;
+var TLV_TAG_ONE_BYTE_FLAG = 0x1F;
+var TLV_TAG_HAS_NEXT_BYTE_FLAG = 0x80;
+var TLV_LENGTH_ONE_BYTE_FLAG = 0x80;
+var TLV_LENGTH_ADDITIONAL_BYTES_FLAG = 0x7F;
 var TlvParser = (function () {
     function TlvParser() {
     }
-    TlvParser.prepareTag = function (tag) {
-        if (tag == null) {
-            throw TlvError.errorTagEmpty();
-        }
-        var preparedTag = null;
-        if (Buffer.isBuffer(tag)) {
-            preparedTag = tag;
-        }
-        else if (typeof tag === 'string') {
-            if (tag.length % 2 !== 0) {
-                throw TlvError.errorTagUnevenBytes(tag);
-            }
-            try {
-                preparedTag = new Buffer(tag, 'hex');
-            }
-            catch (error) {
-                throw TlvError.errorTagContainsNonHex(tag);
-            }
-        }
-        else {
-        }
-        return preparedTag;
-    };
-    TlvParser.prepareBuffer = function (buffer) {
-        var preparedBuffer = null;
-        if (buffer == null) {
-            preparedBuffer = new Buffer(0);
-        }
-        else if (Buffer.isBuffer(buffer)) {
-            preparedBuffer = buffer;
-        }
-        else if (typeof buffer === 'string') {
-            preparedBuffer = new Buffer(buffer, 'hex');
-        }
-        else {
-        }
-        return preparedBuffer;
-    };
-    TlvParser.prepareItems = function (items) {
-        var preparedItems = null;
-        if (items == null) {
-            preparedItems = [];
-        }
-        if (Array.isArray(items)) {
-            preparedItems = items;
-        }
-        else {
-        }
-        return preparedItems;
-    };
-    TlvParser.prepareParseBuffer = function (buffer) {
-        var preparedParseBuffer = null;
-        if (buffer == null) {
-            preparedParseBuffer = new Buffer(0);
-        }
-        else if (Buffer.isBuffer(buffer)) {
-            preparedParseBuffer = buffer;
-        }
-        else if (typeof buffer === 'string') {
-            preparedParseBuffer = new Buffer(buffer, 'hex');
-        }
-        else {
-        }
-        return preparedParseBuffer;
-    };
     TlvParser.parseItems = function (buffer) {
+        var octetBuffer = new OctetBuffer(buffer);
         var items = [];
-        var errorOccured = false;
-        while (buffer.remaining > 0) {
-            var parseResult = this.parseItem(buffer);
-            if (parseResult.result != null) {
+        while (octetBuffer.remaining > 0) {
+            this.skipZeroBytes(octetBuffer);
+            var parseResult = this.parseItem(octetBuffer);
+            if (parseResult.result !== null) {
                 items.push(parseResult.result);
             }
-            if (parseResult.error != null) {
+            if (parseResult.error !== null) {
                 return new TlvParserResult(items, parseResult.error);
             }
         }
         return new TlvParserResult(items, null);
+    };
+    TlvParser.skipZeroBytes = function (buffer) {
+        var peeked;
+        while (buffer.remaining > 0) {
+            peeked = buffer.peek();
+            if (peeked !== TLV_IGNORE_VALUE) {
+                break;
+            }
+            buffer.readUInt8();
+        }
+        return buffer;
     };
     TlvParser.parseItem = function (buffer) {
         //console.log('start parsing single items, remaining length: ' + buffer.remaining);
@@ -463,7 +560,7 @@ var TlvParser = (function () {
             return new TlvParserResult(null, tagParsingResult.error);
         }
         var tagBuffer = tagParsingResult.result;
-        var type = this.typeFromTag(tagBuffer);
+        var type = TlvHelper.typeFromTag(tagBuffer);
         var lengthParsingResult = this.parseLength(buffer, tagBuffer);
         if (lengthParsingResult.error != null) {
             return new TlvParserResult(null, lengthParsingResult.error);
@@ -475,105 +572,119 @@ var TlvParser = (function () {
             var tlvItem = TlvFactory.primitiveTlv(tagBuffer, value);
             return new TlvParserResult(tlvItem, valueParsingResult.error);
         }
-        if (type == TlvType.PRIMITIVE) {
-            var tlvItem = TlvFactory.primitiveTlv(tagBuffer, value);
-            return new TlvParserResult(tlvItem, valueParsingResult.error);
-        }
-        else {
-            var subBuffer = new OctetBuffer(value);
-            var subParsingResult = this.parseItems(subBuffer);
+        if (type === TlvType.CONSTRUCTED) {
+            var subParsingResult = this.parseItems(value);
             var tlvItem = TlvFactory.constructedTlv(tagBuffer, subParsingResult.result);
             return new TlvParserResult(tlvItem, subParsingResult.error);
+        }
+        else {
+            var tlvItem = TlvFactory.primitiveTlv(tagBuffer, value);
+            return new TlvParserResult(tlvItem, valueParsingResult.error);
         }
     };
     TlvParser.parseTag = function (buffer) {
         if (buffer.remaining === 0) {
-            return new TlvParserResult(null, TlvParsingError.errorParsingTagInsufficientData(new Buffer(0)));
+            return new TlvParserResult(null, TlvParserParseError.errorInsufficientTagData(new Buffer(0)));
         }
         var tagBuffer = new OctetBuffer();
         var tagByte = buffer.readUInt8();
         tagBuffer.writeUInt8(tagByte);
-        if ((tagByte & 0x1F) !== 0x1F) {
+        if ((tagByte & TLV_TAG_ONE_BYTE_FLAG) !== TLV_TAG_ONE_BYTE_FLAG) {
             return new TlvParserResult(tagBuffer.backingBuffer, null);
         }
         do {
             if (buffer.remaining === 0) {
-                return new TlvParserResult(tagBuffer.backingBuffer, TlvParsingError.errorParsingTagInsufficientData(tagBuffer.backingBuffer));
+                return new TlvParserResult(tagBuffer.backingBuffer, TlvParserParseError.errorInsufficientTagData(tagBuffer.backingBuffer));
             }
             tagByte = buffer.readUInt8();
             tagBuffer.writeUInt8(tagByte);
-        } while ((tagByte & 0x80) == 0x80);
+        } while ((tagByte & TLV_TAG_HAS_NEXT_BYTE_FLAG) == TLV_TAG_HAS_NEXT_BYTE_FLAG);
         return new TlvParserResult(tagBuffer.backingBuffer, null);
     };
     TlvParser.parseLength = function (buffer, tag) {
-        if (buffer.remaining == 0) {
-            return new TlvParserResult(null, TlvParsingError.errorParsingLengthInsufficientData(tag, 1));
+        if (buffer.remaining === 0) {
+            return new TlvParserResult(null, TlvParserParseError.errorInsufficientLengthData(tag, 1));
         }
         var length = buffer.readUInt8();
-        if ((length & 0x80) != 0x80) {
+        if ((length & TLV_LENGTH_ONE_BYTE_FLAG) !== TLV_LENGTH_ONE_BYTE_FLAG) {
             return new TlvParserResult(length, null);
         }
-        var bytesToRead = (length & 0x7F);
+        var bytesToRead = (length & TLV_LENGTH_ADDITIONAL_BYTES_FLAG);
         if (bytesToRead > 4) {
-            return new TlvParserResult(null, TlvParsingError.errorParsingLengthNumberTooBig(tag, bytesToRead));
+            return new TlvParserResult(null, TlvParserParseError.errorLengthTooBig(tag, bytesToRead));
         }
         if (buffer.remaining < bytesToRead) {
-            return new TlvParserResult(null, TlvParsingError.errorParsingLengthInsufficientData(tag, bytesToRead - buffer.remaining));
+            return new TlvParserResult(null, TlvParserParseError.errorInsufficientLengthData(tag, bytesToRead - buffer.remaining));
         }
-        var nextByte;
         length = 0;
-        for (var i = 0; i < bytesToRead; i++) {
-            nextByte = buffer.readUInt8();
-            length = length << 8;
-            length = length | nextByte;
+        switch (bytesToRead) {
+            case 1:
+                length = buffer.readUInt8();
+                break;
+            case 2:
+                length = buffer.readUInt16();
+                break;
+            case 3:
+                length = buffer.readUInt24();
+                break;
+            case 4:
+                length = buffer.readUInt32();
+                break;
         }
         return new TlvParserResult(length, null);
     };
     TlvParser.parseValue = function (buffer, length, tag) {
         if (buffer.remaining < length) {
-            var remaining = buffer.remaining;
+            var missing = length - buffer.remaining;
             var partialValue = buffer.readBufferRemainig();
-            return new TlvParserResult(partialValue, TlvParsingError.errorParsingValueInsufficientData(tag, length - remaining));
+            return new TlvParserResult(partialValue, TlvParserParseError.errorInsufficientValueData(tag, missing));
         }
         var value = buffer.readBuffer(length);
         return new TlvParserResult(value, null);
     };
-    TlvParser.typeFromTag = function (tagBuffer) {
-        var firstTagByte = tagBuffer.readUInt8(0);
-        var typeIdentifier = (firstTagByte & 0x20);
-        if (typeIdentifier == 0x20) {
-            return TlvType.CONSTRUCTED;
-        }
-        else {
-            return TlvType.PRIMITIVE;
-        }
-    };
-    TlvParser.classFromTag = function (tagBuffer) {
-        var firstTagByte = tagBuffer.readUInt8(0);
-        var classIdentifier = (firstTagByte & 0xC0);
-        if (classIdentifier == 0x00) {
-            return TlvClass.UNIVERSAL;
-        }
-        if (classIdentifier == 0x40) {
-            return TlvClass.APPLICATION;
-        }
-        if (classIdentifier == 0x80) {
-            return TlvClass.CONTEXT_SPECIFIC;
-        }
-        if (classIdentifier == 0xC0) {
-            return TlvClass.PRIVATE;
-        }
-    };
     return TlvParser;
+})();
+exports.TlvParser = TlvParser;
+var TlvSerializationError = (function () {
+    function TlvSerializationError(name, message) {
+        this.name = name;
+        this.message = message;
+    }
+    TlvSerializationError.errorPayloadToBig = function (tag, requested, maximum) {
+        return new TlvSerializationError('Error while serializing item ' + tag + '"', 'Present length is ' + requested + ', maximum supported ' + maximum);
+    };
+    return TlvSerializationError;
 })();
 var TlvSerializer = (function () {
     function TlvSerializer() {
     }
+    TlvSerializer.serializeItems = function (items) {
+        var serializedItems = [];
+        for (var _i = 0; _i < items.length; _i++) {
+            var item = items[_i];
+            var itemBuffer = TlvSerializer.serializeItem(item);
+            serializedItems.push(itemBuffer);
+        }
+        var serializedBuffer = Buffer.concat(serializedItems);
+        return serializedBuffer;
+    };
+    TlvSerializer.serializeItem = function (item) {
+        var serializedItem;
+        if (item.type === TlvType.CONSTRUCTED) {
+            serializedItem = TlvSerializer.serializeConstrucedItem(item);
+        }
+        else {
+            serializedItem = TlvSerializer.serializePrimitiveItem(item);
+        }
+        return serializedItem;
+    };
     TlvSerializer.serializeConstrucedItem = function (item) {
         var serializedItems = [];
-        item.items.forEach(function (item) {
-            serializedItems.push(item.serialize());
-        });
+        for (var _i = 0, _a = item.items; _i < _a.length; _i++) {
+            var item = _a[_i];
+            var itemBuffer = TlvSerializer.serializeItem(item);
+            serializedItems.push(itemBuffer);
+        }
         var serializedItemsBuffer = Buffer.concat(serializedItems);
         var tagBuffer = new Buffer(item.tag, 'hex');
         var lengthBuffer = this.lengthBufferForLengt(item.tag, serializedItemsBuffer.length);
@@ -614,314 +725,208 @@ var TlvSerializer = (function () {
     };
     return TlvSerializer;
 })();
-var currencyLookup = require('country-data').lookup;
-var countryLookup = require('i18n-iso-countries');
-(function (AnnotationValueFormat) {
-    AnnotationValueFormat[AnnotationValueFormat["ALPHABETIC"] = 0] = "ALPHABETIC";
-    AnnotationValueFormat[AnnotationValueFormat["ALPHANUMERIC"] = 1] = "ALPHANUMERIC";
-    AnnotationValueFormat[AnnotationValueFormat["ALPHANUMERIC_SPECIAL"] = 2] = "ALPHANUMERIC_SPECIAL";
-    AnnotationValueFormat[AnnotationValueFormat["UNSIGNED_NUMBER"] = 3] = "UNSIGNED_NUMBER";
-    AnnotationValueFormat[AnnotationValueFormat["COMPRESSED_NUMERIC"] = 4] = "COMPRESSED_NUMERIC";
-    AnnotationValueFormat[AnnotationValueFormat["NUMERIC"] = 5] = "NUMERIC";
-    AnnotationValueFormat[AnnotationValueFormat["VARIABLE_BITS"] = 6] = "VARIABLE_BITS";
-    AnnotationValueFormat[AnnotationValueFormat["VARIABLE_BYTES"] = 7] = "VARIABLE_BYTES";
-    AnnotationValueFormat[AnnotationValueFormat["YYMMDD"] = 8] = "YYMMDD";
-    AnnotationValueFormat[AnnotationValueFormat["HHMMSS"] = 9] = "HHMMSS";
-})(exports.AnnotationValueFormat || (exports.AnnotationValueFormat = {}));
-var AnnotationValueFormat = exports.AnnotationValueFormat;
-(function (AnnotationValueReference) {
-    AnnotationValueReference[AnnotationValueReference["ISO_3166"] = 0] = "ISO_3166";
-    AnnotationValueReference[AnnotationValueReference["ISO_4217"] = 1] = "ISO_4217";
-})(exports.AnnotationValueReference || (exports.AnnotationValueReference = {}));
-var AnnotationValueReference = exports.AnnotationValueReference;
-var AnnotationValueReferenceHelper = (function () {
-    function AnnotationValueReferenceHelper() {
-    }
-    AnnotationValueReferenceHelper.stringValueUsingReference = function (mappedValue, annotationValueReference) {
-        var stringValue = mappedValue + " (unmapped)";
-        switch (annotationValueReference) {
-            case AnnotationValueReference.ISO_3166: {
-                var countryNumber = parseInt(mappedValue, 10);
-                var countryName = countryLookup.getName(countryNumber, "en");
-                var countryAlpha2 = countryLookup.numericToAlpha2(mappedValue);
-                stringValue = countryName + " (" + countryAlpha2 + ")";
-                break;
-            }
-            case AnnotationValueReference.ISO_4217: {
-                var currencyNumber = parseInt(mappedValue, 10);
-                var currency = currencyLookup.currencies({ number: currencyNumber })[0];
-                var currencyName = currency.name;
-                var currencyCode = currency.code;
-                stringValue = currencyName + " (" + currencyCode + ")";
-                break;
-            }
-        }
-        return stringValue;
-    };
-    return AnnotationValueReferenceHelper;
-})();
-var AnnotationValueFormatHelper = (function () {
-    function AnnotationValueFormatHelper() {
-    }
-    AnnotationValueFormatHelper.stringValueUsingFormat = function (value, annotationValueFormat) {
-        var rawValue = value.toString('hex').toUpperCase();
-        var stringValue = rawValue;
-        switch (annotationValueFormat) {
-            case AnnotationValueFormat.ALPHABETIC: {
-                stringValue = value.toString('utf-8');
-                break;
-            }
-            case AnnotationValueFormat.ALPHANUMERIC: {
-                stringValue = value.toString('utf-8');
-                break;
-            }
-            case AnnotationValueFormat.ALPHANUMERIC_SPECIAL: {
-                stringValue = value.toString('utf-8');
-                break;
-            }
-            case AnnotationValueFormat.UNSIGNED_NUMBER: {
-                stringValue = '' + value.readUInt8(value.length - 1);
-                break;
-            }
-            case AnnotationValueFormat.VARIABLE_BYTES: {
-                stringValue = rawValue;
-                break;
-            }
-            case AnnotationValueFormat.VARIABLE_BITS: {
-                var octetBuffer = new OctetBuffer(value);
-                var bufferBinaryString = '';
-                while (octetBuffer.remaining > 0) {
-                    var bufferByte = octetBuffer.readUInt8();
-                    var bufferByteBinaryString = bufferByte.toString(2);
-                    var requiredPadding = 8 - bufferByteBinaryString.length;
-                    bufferByteBinaryString = Array(requiredPadding + 1).join('0') + bufferByteBinaryString;
-                    bufferBinaryString += bufferByteBinaryString + ' ';
-                }
-                bufferBinaryString = bufferBinaryString.slice(0, -1);
-                stringValue = bufferBinaryString;
-                break;
-            }
-            case AnnotationValueFormat.COMPRESSED_NUMERIC: {
-                stringValue = rawValue;
-                break;
-            }
-            case AnnotationValueFormat.NUMERIC: {
-                stringValue = rawValue;
-                break;
-            }
-            case AnnotationValueFormat.YYMMDD: {
-                stringValue = rawValue;
-                stringValue = stringValue.substring(0, 2) + '-' + stringValue.substring(2, 4) + '-' + stringValue.substring(4, 6);
-                break;
-            }
-            case AnnotationValueFormat.HHMMSS: {
-                stringValue = rawValue;
-                stringValue = stringValue.substring(0, 2) + ':' + stringValue.substring(2, 4) + ':' + stringValue.substring(4, 6);
-                break;
-            }
-        }
-        return stringValue;
-    };
-    return AnnotationValueFormatHelper;
-})();
-var TlvAnnotation = (function () {
-    function TlvAnnotation(tag, type, rawValue, mappedValue, name, description, reference, format, components) {
-        if (mappedValue === void 0) { mappedValue = null; }
-        if (name === void 0) { name = null; }
-        if (description === void 0) { description = null; }
-        if (reference === void 0) { reference = null; }
-        if (format === void 0) { format = null; }
-        if (components === void 0) { components = null; }
-        this.tag = tag;
-        this.type = type;
-        this.rawValue = rawValue;
-        this.mappedValue = mappedValue;
+exports.TlvSerializer = TlvSerializer;
+var TlvFactoryParseError = (function () {
+    function TlvFactoryParseError(name, message, partialTlv) {
         this.name = name;
-        this.description = description;
-        this.reference = reference;
-        this.format = format;
-        this.components = components;
-        this.items = null;
+        this.message = message;
+        this.partialTlv = partialTlv;
     }
-    return TlvAnnotation;
+    TlvFactoryParseError.errorPartialResult = function (error, partialTlv) {
+        return new TlvFactoryParseError(error.name, error.message, partialTlv);
+    };
+    return TlvFactoryParseError;
 })();
-var TlvAnnotationComponent = (function () {
-    function TlvAnnotationComponent(name, selector, triggered, value) {
+exports.TlvFactoryParseError = TlvFactoryParseError;
+var TlvFactoryTlvError = (function () {
+    function TlvFactoryTlvError(name, message) {
         this.name = name;
-        this.selector = selector;
-        this.triggered = triggered;
-        this.value = value;
+        this.message = message;
     }
-    return TlvAnnotationComponent;
+    TlvFactoryTlvError.errorEmpty = function (parameter) {
+        return new TlvFactoryTlvError('Error creating tlv item', '"' + parameter + '" must not be <null> or ""');
+    };
+    TlvFactoryTlvError.errorUnevenBytes = function (parameter, given) {
+        return new TlvFactoryTlvError('Error creating tlv item', '"' + parameter + '" must be an even number, given "' + given + '"');
+    };
+    TlvFactoryTlvError.errorContainsNonHex = function (parameter, given) {
+        return new TlvFactoryTlvError('Error creating tlv item', '"' + parameter + '" must only contain hex characters, given "' + given + '"');
+    };
+    TlvFactoryTlvError.errorUnsupportedType = function (parameter) {
+        return new TlvFactoryTlvError('Error creating tlv item', '"' + parameter + '" is an unsupported format');
+    };
+    return TlvFactoryTlvError;
 })();
-var TlvAnnotationRegistry = (function () {
-    function TlvAnnotationRegistry() {
-        this.providers = [];
+exports.TlvFactoryTlvError = TlvFactoryTlvError;
+var TlvFactorySerializeError = (function () {
+    function TlvFactorySerializeError(name, message) {
+        this.name = name;
+        this.message = message;
     }
-    TlvAnnotationRegistry.getInstance = function () {
-        if (this.INSTANCE == null) {
-            this.INSTANCE = new TlvAnnotationRegistry();
-            this.INSTANCE.registerDefaultProviders();
-        }
-        return this.INSTANCE;
+    TlvFactorySerializeError.errorUnsupportedType = function (parameter) {
+        return new TlvFactorySerializeError('Error serializing ' + parameter, '"' + parameter + '" parameter type provided is not supported');
     };
-    TlvAnnotationRegistry.lookupAnnotations = function (tlvItems) {
-        return this.getInstance().lookupAnnotations(tlvItems);
-    };
-    TlvAnnotationRegistry.lookupAnnotation = function (tlvItems) {
-        return this.getInstance().lookupAnnotation(tlvItems);
-    };
-    TlvAnnotationRegistry.registerAnnotationProvider = function (provider) {
-        this.getInstance().registerAnnotationProvider(provider);
-    };
-    TlvAnnotationRegistry.prototype.lookupAnnotations = function (tlvItems) {
-        var annotationItems = [];
-        for (var i = 0; i < tlvItems.length; i++) {
-            var tlvItem = tlvItems[i];
-            var tlvAnnotation = this.lookupAnnotation(tlvItem);
-            annotationItems.push(tlvAnnotation);
-            if (tlvItem.items !== null) {
-                var subAnnotationItems = this.lookupAnnotations(tlvItem.items);
-                tlvAnnotation.items = subAnnotationItems;
-            }
-        }
-        return annotationItems;
-    };
-    TlvAnnotationRegistry.prototype.lookupAnnotation = function (tlvItem) {
-        for (var i = 0; i < this.providers.length; i++) {
-            var provider = this.providers[i];
-            var annotation = provider.lookup(tlvItem);
-            if (annotation !== null) {
-                return annotation;
-            }
-        }
-        return this.defaultAnnotation(tlvItem);
-    };
-    TlvAnnotationRegistry.prototype.defaultAnnotation = function (tlvItem) {
-        var tag = tlvItem.tag;
-        var type = tlvItem.type;
-        var rawValue = AnnotationValueFormatHelper.stringValueUsingFormat(tlvItem.value, AnnotationValueFormat.VARIABLE_BYTES);
-        var annotationItem = new TlvAnnotation(tag, type, rawValue);
-        return annotationItem;
-    };
-    TlvAnnotationRegistry.prototype.registerAnnotationProvider = function (provider) {
-        this.providers.push(provider);
-    };
-    TlvAnnotationRegistry.prototype.registerDefaultProviders = function () {
-    };
-    return TlvAnnotationRegistry;
+    return TlvFactorySerializeError;
 })();
-exports.TlvAnnotationRegistry = TlvAnnotationRegistry;
-var DefaultTlvAnnotationProvider = (function () {
-    function DefaultTlvAnnotationProvider(resource) {
-        this.resource = resource;
-        this.reference = resource.reference;
-        this.name = resource.name;
+exports.TlvFactorySerializeError = TlvFactorySerializeError;
+var Tlv = (function () {
+    function Tlv(tag, payload) {
+        var tagBuffer = tag;
+        var tagString = tagBuffer.toString('hex').toUpperCase();
+        ;
+        this.tag = tagString;
+        this.type = TlvHelper.typeFromTag(tagBuffer);
+        this.class = TlvHelper.classFromTag(tagBuffer);
+        this.value = TlvFactoryHelper.verifyUncheckedTlvPrimitivePayload(this.type, payload);
+        this.items = TlvFactoryHelper.verifyUncheckedTlvConstructedPayload(this.type, payload);
     }
-    DefaultTlvAnnotationProvider.prototype.lookup = function (item) {
-        var resourceItem = this.findItemWithTag(item.tag);
-        if (resourceItem == null) {
+    return Tlv;
+})();
+var TlvFactory = (function () {
+    function TlvFactory() {
+    }
+    TlvFactory.primitiveTlv = function (tag, value) {
+        var verifiedTag = TlvFactoryHelper.verifyGenericTag(tag);
+        var verifiedValue = TlvFactoryHelper.verifyPrimitiveValue(value);
+        var primitiveTlv = new Tlv(verifiedTag, verifiedValue);
+        return primitiveTlv;
+    };
+    TlvFactory.constructedTlv = function (tag, items) {
+        var verifiedTag = TlvFactoryHelper.verifyGenericTag(tag);
+        var verifiedItems = TlvFactoryHelper.verifyConstructedItems(items);
+        var constructedTlv = new Tlv(verifiedTag, verifiedItems);
+        return constructedTlv;
+    };
+    TlvFactory.parse = function (buffer) {
+        var verifiedValue = TlvFactoryHelper.verifyParseValue(buffer);
+        var parsedResult = TlvParser.parseItems(verifiedValue);
+        if (parsedResult.error != null) {
+            throw TlvFactoryParseError.errorPartialResult(parsedResult.error, parsedResult.result);
+        }
+        return parsedResult.result;
+    };
+    TlvFactory.serialize = function (items) {
+        var verifiedItems = TlvFactoryHelper.verifySerializeItems(items);
+        var serializedItems = TlvSerializer.serializeItems(verifiedItems);
+        return serializedItems;
+    };
+    return TlvFactory;
+})();
+exports.TlvFactory = TlvFactory;
+var TlvFactoryHelper = (function () {
+    function TlvFactoryHelper() {
+    }
+    TlvFactoryHelper.verifyUncheckedTlvPrimitivePayload = function (type, payload) {
+        if (type !== TlvType.PRIMITIVE) {
             return null;
         }
-        var annotation;
-        if (item.type === TlvType.PRIMITIVE) {
-            annotation = this.buildAnnotationPrimitive(item, resourceItem);
+        if (payload == null) {
+            return new Buffer(0);
+        }
+        return payload;
+    };
+    TlvFactoryHelper.verifyUncheckedTlvConstructedPayload = function (type, payload) {
+        if (type !== TlvType.CONSTRUCTED) {
+            return null;
+        }
+        if (payload == null) {
+            return [];
+        }
+        return payload;
+    };
+    TlvFactoryHelper.verifyGenericTag = function (tag) {
+        if (tag == null) {
+            throw TlvFactoryTlvError.errorEmpty('tag');
+        }
+        var verifiedTag = null;
+        if (Buffer.isBuffer(tag)) {
+            verifiedTag = TlvFactoryHelper.fromBuffer(tag);
+        }
+        else if (typeof tag === 'string') {
+            verifiedTag = TlvFactoryHelper.fromString('tag', tag);
         }
         else {
-            annotation = this.buildAnnotationConstructed(item, resourceItem);
+            throw TlvFactoryTlvError.errorUnsupportedType('tag');
         }
-        return annotation;
+        return verifiedTag;
     };
-    DefaultTlvAnnotationProvider.prototype.buildAnnotationConstructed = function (item, resourceItem) {
-        var tag = item.tag;
-        var type = item.type;
-        var name = resourceItem.name;
-        var description = resourceItem.description;
-        var reference = this.reference;
-        var rawValue = item.value.toString('hex').toUpperCase();
-        var annotationItem = new TlvAnnotation(tag, type, rawValue, null, name, description, reference);
-        return annotationItem;
+    TlvFactoryHelper.verifyPrimitiveValue = function (buffer) {
+        var verifiedValue = null;
+        if (buffer == null) {
+            verifiedValue = TlvFactoryHelper.emptyBuffer();
+        }
+        else if (Buffer.isBuffer(buffer)) {
+            verifiedValue = TlvFactoryHelper.fromBuffer(buffer);
+        }
+        else if (typeof buffer === 'string') {
+            verifiedValue = TlvFactoryHelper.fromString('value', buffer);
+        }
+        else {
+            throw TlvFactoryTlvError.errorUnsupportedType('value');
+        }
+        return verifiedValue;
     };
-    DefaultTlvAnnotationProvider.prototype.buildAnnotationPrimitive = function (item, resourceItem) {
-        var tag = item.tag;
-        var type = item.type;
-        var name = resourceItem.name;
-        var description = resourceItem.description;
-        var reference = this.reference;
-        var format = resourceItem.format;
-        var reference = resourceItem.reference;
-        var rawValue = item.value.toString('hex').toUpperCase();
-        var mappedValue = AnnotationValueFormatHelper.stringValueUsingFormat(item.value, AnnotationValueFormat[format]);
-        var componentsItems = this.buildAnnotationComponents(mappedValue, resourceItem);
-        var referenceItem = this.buildAnnotationReference(reference, mappedValue);
-        var mergedComponents = [];
-        if (componentsItems !== null) {
-            mergedComponents = mergedComponents.concat(componentsItems);
+    TlvFactoryHelper.verifyConstructedItems = function (items) {
+        var verifiedItems = null;
+        if (items == null) {
+            verifiedItems = [];
         }
-        if (referenceItem !== null) {
-            mergedComponents = mergedComponents.concat(referenceItem);
+        if (Array.isArray(items)) {
+            verifiedItems = items;
         }
-        if (mergedComponents.length === 0) {
-            mergedComponents = null;
+        else {
+            throw TlvFactoryTlvError.errorUnsupportedType('items');
         }
-        var annotationItem = new TlvAnnotation(tag, type, rawValue, mappedValue, name, description, reference, format, mergedComponents);
-        return annotationItem;
+        return verifiedItems;
     };
-    DefaultTlvAnnotationProvider.prototype.buildAnnotationReference = function (reference, mappedValue) {
-        if (reference == null || reference.length === 0) {
-            return null;
+    TlvFactoryHelper.verifyParseValue = function (buffer) {
+        var verifiedValue = null;
+        if (buffer == null) {
+            verifiedValue = TlvFactoryHelper.emptyBuffer();
         }
-        var referenceEnum = AnnotationValueReference[reference];
-        var referenceValue = AnnotationValueReferenceHelper.stringValueUsingReference(mappedValue, referenceEnum);
-        var referenceComponent = new TlvAnnotationComponent(reference, mappedValue, true, referenceValue);
-        return referenceComponent;
+        else if (Buffer.isBuffer(buffer)) {
+            verifiedValue = TlvFactoryHelper.fromBuffer(buffer);
+        }
+        else if (typeof buffer === 'string') {
+            verifiedValue = TlvFactoryHelper.fromString('value', buffer);
+        }
+        else {
+            throw TlvFactoryTlvError.errorUnsupportedType('buffer');
+        }
+        return verifiedValue;
     };
-    DefaultTlvAnnotationProvider.prototype.buildAnnotationComponents = function (mappedValue, resourceItem) {
-        if (resourceItem.components == null || resourceItem.components.length === 0) {
-            return null;
+    TlvFactoryHelper.verifySerializeItems = function (items) {
+        var verifiedItems = null;
+        if (items == null) {
+            throw TlvFactoryTlvError.errorUnsupportedType('items');
         }
-        var valueComponents = [];
-        for (var i = 0; i < resourceItem.components.length; i++) {
-            var resourceComponent = resourceItem.components[i];
-            var name = resourceComponent.name;
-            var selector = null;
-            var triggered = false;
-            var value = null;
-            if (typeof (resourceComponent.bitmask) !== 'undefined' && resourceComponent.bitmask !== null) {
-                selector = resourceComponent.bitmask;
-                triggered = ByteHelper.hexStringMatchesHexBitflags(mappedValue, resourceComponent.bitmask);
-            }
-            else if (typeof (resourceComponent.bitpattern) !== 'undefined' && resourceComponent.bitpattern !== null) {
-                selector = resourceComponent.bitpattern;
-                triggered = ByteHelper.hexStringMatchesHexBitpattern(mappedValue, resourceComponent.bitpattern);
-            }
-            else if (typeof (resourceComponent.pattern) !== 'undefined' && resourceComponent.pattern !== null) {
-                selector = resourceComponent.pattern.toUpperCase();
-                triggered = (selector === mappedValue.toUpperCase());
-            }
-            var valueComponent = new TlvAnnotationComponent(name, selector, triggered, value);
-            valueComponents.push(valueComponent);
+        if (Array.isArray(items)) {
+            verifiedItems = items;
         }
-        return valueComponents;
+        else {
+            verifiedItems = [items];
+        }
+        return verifiedItems;
     };
-    DefaultTlvAnnotationProvider.prototype.extractRegex = function (reference, regex) {
-        var compiledRegex = new RegExp(regex, 'i');
-        var execResult = compiledRegex.exec(reference);
-        if (execResult === null) {
-            return null;
-        }
-        var match = execResult[1];
-        return match;
+    TlvFactoryHelper.emptyBuffer = function () {
+        return new Buffer(0);
     };
-    DefaultTlvAnnotationProvider.prototype.findItemWithTag = function (tag) {
-        for (var i = 0; i < this.resource.items.length; i++) {
-            var item = this.resource.items[i];
-            if (item.tag === tag) {
-                return item;
-            }
-        }
-        return null;
+    TlvFactoryHelper.fromBuffer = function (buffer) {
+        var verifiedBuffer = buffer;
+        return verifiedBuffer;
     };
-    return DefaultTlvAnnotationProvider;
+    TlvFactoryHelper.fromString = function (parameter, string) {
+        if (string.length % 2 !== 0) {
+            throw TlvFactoryTlvError.errorUnevenBytes(parameter, string);
+        }
+        var verifiedString = null;
+        try {
+            verifiedString = new Buffer(string, 'hex');
+        }
+        catch (error) {
+            throw TlvFactoryTlvError.errorContainsNonHex(parameter, string);
+        }
+        return verifiedString;
+    };
+    return TlvFactoryHelper;
 })();
-exports.DefaultTlvAnnotationProvider = DefaultTlvAnnotationProvider;

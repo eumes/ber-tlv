@@ -14,15 +14,8 @@ export interface ITlv {
     class: TlvClass;
     value: Buffer;
     items: ITlv[];
-    serialize(): Buffer;
 }
-export declare class TlvFactory {
-    static primitiveTlv(tag: Buffer | string, value?: Buffer | string): ITlv;
-    static constructedTlv(tag: Buffer | string, items?: ITlv[]): ITlv;
-    static parseVerbose(buffer: Buffer | string): ITlvParsingResult;
-    static parse(buffer: Buffer | string): ITlv[];
-}
-export interface ITlvParsingResult {
-    result: ITlv[];
-    error: Error;
+export declare class TlvHelper {
+    static typeFromTag(tagBuffer: Buffer): TlvType;
+    static classFromTag(tagBuffer: Buffer): TlvClass;
 }

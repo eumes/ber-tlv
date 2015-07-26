@@ -5,7 +5,583 @@ import child  = require("child_process");
 import tls = require("tls");
 import http = require("http");
 import crypto = require("crypto");
-import * as util from 'util';
+export enum TlvType {
+    PRIMITIVE,
+    CONSTRUCTED
+}
+
+export enum TlvClass {
+    UNIVERSAL,
+    APPLICATION,
+    CONTEXT_SPECIFIC,
+    PRIVATE
+}
+
+export interface ITlv {
+    tag: string;
+    type: TlvType;
+    class: TlvClass;
+    value: Buffer;
+    items: ITlv[];
+}
+
+
+const TLV_TAG_CONSTRUCTED_FLAG: number = 0x20;
+const TLV_TAG_CLASS_FLAG: number = 0xC0;
+const TLV_TAG_CLASS_UNIVERSAL: number = 0x00;
+const TLV_TAG_CLASS_APPLICATION: number = 0x40;
+const TLV_TAG_CLASS_CONTEXT_SPECIFIC: number = 0x80;
+const TLV_TAG_CLASS_PRIVATE: number = 0xC0;
+
+export class TlvHelper {
+    
+    static typeFromTag(tagBuffer: Buffer): TlvType {
+        var firstTagByte: number = tagBuffer.readUInt8(0);
+        var typeIdentifier = (firstTagByte & TLV_TAG_CONSTRUCTED_FLAG);
+
+        if (typeIdentifier === TLV_TAG_CONSTRUCTED_FLAG){
+            return TlvType.CONSTRUCTED;
+        }
+        else {
+            return TlvType.PRIMITIVE;
+        }
+    }
+
+    static classFromTag(tagBuffer: Buffer): TlvClass {
+        var firstTagByte: number = tagBuffer.readUInt8(0);
+        var classIdentifier: number = (firstTagByte & TLV_TAG_CLASS_FLAG);
+
+        if (classIdentifier === TLV_TAG_CLASS_UNIVERSAL){
+            return TlvClass.UNIVERSAL;
+        }
+        else if (classIdentifier === TLV_TAG_CLASS_APPLICATION){
+            return TlvClass.APPLICATION;
+        }
+        else if (classIdentifier === TLV_TAG_CLASS_CONTEXT_SPECIFIC){
+            return TlvClass.CONTEXT_SPECIFIC;
+        }
+        else {
+            return TlvClass.PRIVATE;
+        }
+    }
+}
+
+                                                                                                                                                                                    
+
+class TlvParserParseError implements Error {
+    constructor(public name: string, public message: string) {}
+
+    static errorEmpty(parameter: string): TlvParserParseError {
+        return new TlvParserParseError('Error parsing data', '"' + parameter + '" must not be <null> or ""');
+    }
+    static errorUnsupportedType(parameter: string): TlvParserParseError {
+        return new TlvParserParseError('Error parsing data', '"' + parameter + '" is an unsupported format');
+    }
+
+    static errorInsufficientTagData(partialTag: Buffer): TlvParserParseError {
+        return new TlvParserParseError('Error while reading tag for item starting with "' + partialTag.toString('hex').toUpperCase() + '"', 'Need at least 1 additional byte to complete tag');
+    }
+    static errorInsufficientLengthData(tag: Buffer, missing: number): TlvParserParseError {
+        return new TlvParserParseError('Error while reading length for item "' +  tag.toString('hex').toUpperCase() + '"', 'Need at least ' + missing + ' addional bytes to read length information');
+    }
+    static errorLengthTooBig(tag: Buffer, given: number): TlvParserParseError {
+        return new TlvParserParseError('Error while reading length for item "' + tag.toString('hex').toUpperCase() + '"', 'Maximum number of concatenated length bytes supported is 4, present ' + given);
+    }
+    static errorInsufficientValueData(tag: Buffer, missing: number): TlvParserParseError {
+        return new TlvParserParseError('Error while reading value for item "' + tag.toString('hex').toUpperCase() + '"', 'Need at least ' + missing + ' addional bytes for reading complete value');
+    }
+}
+
+export class TlvParserResult<T> {
+    constructor(public result: T, public error: Error) {}
+}
+
+const TLV_IGNORE_VALUE: number = 0x00;
+const TLV_TAG_ONE_BYTE_FLAG: number = 0x1F;
+const TLV_TAG_HAS_NEXT_BYTE_FLAG: number = 0x80;
+const TLV_LENGTH_ONE_BYTE_FLAG: number = 0x80;
+const TLV_LENGTH_ADDITIONAL_BYTES_FLAG: number = 0x7F;
+
+export class TlvParser {
+
+    static parseItems(buffer: Buffer): TlvParserResult<ITlv[]> {
+        var octetBuffer: OctetBuffer = new OctetBuffer(buffer);
+        var items: ITlv[] = [];
+
+        while(octetBuffer.remaining > 0){
+            this.skipZeroBytes(octetBuffer);
+            var parseResult: TlvParserResult<ITlv> = this.parseItem(octetBuffer);
+            if (parseResult.result !== null){
+                items.push(parseResult.result);
+            }
+            if (parseResult.error !== null){
+                return new TlvParserResult<ITlv[]>(items, parseResult.error);
+            }
+        }
+
+        return new TlvParserResult<ITlv[]>(items, null);
+    }
+
+    static skipZeroBytes(buffer: OctetBuffer): OctetBuffer {
+        var peeked: number;
+        while(buffer.remaining > 0){
+            peeked = buffer.peek();
+            if (peeked !== TLV_IGNORE_VALUE){
+                break;
+            }
+            buffer.readUInt8();
+        }
+        return buffer;
+    }
+
+    static parseItem(buffer: OctetBuffer): TlvParserResult<ITlv> {
+        //console.log('start parsing single items, remaining length: ' + buffer.remaining);
+
+        var tagParsingResult: TlvParserResult<Buffer> = this.parseTag(buffer);
+        if (tagParsingResult.error != null){
+            return new TlvParserResult<ITlv>(null, tagParsingResult.error);
+        }
+
+        var tagBuffer: Buffer = tagParsingResult.result;
+        var type: TlvType = TlvHelper.typeFromTag(tagBuffer);
+        //console.log('got tag: ' + tagBuffer.toString('hex'));
+
+        var lengthParsingResult: TlvParserResult<number> = this.parseLength(buffer, tagBuffer);
+        if (lengthParsingResult.error != null){
+            return new TlvParserResult<ITlv>(null, lengthParsingResult.error);
+        }
+        var length: number = lengthParsingResult.result;
+        //console.log('got length: ' + length);
+
+        var valueParsingResult: TlvParserResult<Buffer> = this.parseValue(buffer, length, tagBuffer);
+        var value: Buffer = valueParsingResult.result;
+        if (valueParsingResult.error != null){
+            var tlvItem: ITlv = TlvFactory.primitiveTlv(tagBuffer, value);
+            return new TlvParserResult<ITlv>(tlvItem, valueParsingResult.error);
+        }
+        //console.log('got value: ' + value.toString('hex'));
+
+        if (type === TlvType.CONSTRUCTED) {
+            // console.log('detected constructed tag, now parsing payload');
+            var subParsingResult: TlvParserResult<ITlv[]> = this.parseItems(value);
+            var tlvItem: ITlv = TlvFactory.constructedTlv(tagBuffer, subParsingResult.result);
+            // console.log('returning with constructed tag');
+            return new TlvParserResult<ITlv>(tlvItem, subParsingResult.error);
+        }
+        else {
+            // console.log('returning with primitve tag');
+            var tlvItem: ITlv = TlvFactory.primitiveTlv(tagBuffer, value);
+            return new TlvParserResult<ITlv>(tlvItem, valueParsingResult.error);
+        }
+
+    }
+
+
+    static parseTag(buffer: OctetBuffer): TlvParserResult<Buffer> {
+        if (buffer.remaining === 0){
+            return new TlvParserResult<Buffer>(null, TlvParserParseError.errorInsufficientTagData(new Buffer(0)));
+        }
+
+        var tagBuffer: OctetBuffer = new OctetBuffer();
+        var tagByte: number = buffer.readUInt8();
+        tagBuffer.writeUInt8(tagByte);
+        //console.log('first tag: ' + tagByte);
+
+        if ((tagByte & TLV_TAG_ONE_BYTE_FLAG) !== TLV_TAG_ONE_BYTE_FLAG){
+            //console.log('returning with one byte tag: ' + tagByte);
+            return new TlvParserResult<Buffer>(tagBuffer.backingBuffer, null);
+        }
+
+        do {
+            if (buffer.remaining === 0){
+                return new TlvParserResult<Buffer>(tagBuffer.backingBuffer, TlvParserParseError.errorInsufficientTagData(tagBuffer.backingBuffer));
+            }
+
+            tagByte = buffer.readUInt8();
+            tagBuffer.writeUInt8(tagByte);
+            //console.log('and we read another round of tags: ' + tagByte);
+        } while((tagByte & TLV_TAG_HAS_NEXT_BYTE_FLAG) == TLV_TAG_HAS_NEXT_BYTE_FLAG);
+
+        return new TlvParserResult<Buffer>(tagBuffer.backingBuffer, null);
+    }
+
+    static parseLength(buffer: OctetBuffer, tag: Buffer): TlvParserResult<number> {
+        if (buffer.remaining === 0){
+            return new TlvParserResult<number>(null, TlvParserParseError.errorInsufficientLengthData(tag, 1));
+        }
+
+        var length: number = buffer.readUInt8();
+        // console.log('first length: ' + length);
+        if ((length & TLV_LENGTH_ONE_BYTE_FLAG) !== TLV_LENGTH_ONE_BYTE_FLAG){
+            // console.log('returning with one byte length: ' + length);
+            return new TlvParserResult<number>(length, null);
+        }
+
+        var bytesToRead: number = (length & TLV_LENGTH_ADDITIONAL_BYTES_FLAG);
+        if (bytesToRead > 4){
+            return new TlvParserResult<number>(null, TlvParserParseError.errorLengthTooBig(tag, bytesToRead));
+        }
+        if (buffer.remaining < bytesToRead){
+            return new TlvParserResult<number>(null, TlvParserParseError.errorInsufficientLengthData(tag, bytesToRead - buffer.remaining));
+        }
+
+        length = 0;
+        switch(bytesToRead){
+            case 1:
+                length = buffer.readUInt8();
+                break;
+            case 2:
+                length = buffer.readUInt16();
+                break;
+            case 3:
+                length = buffer.readUInt24();
+                break;
+            case 4:
+                length = buffer.readUInt32();
+                break;
+        }
+
+        // console.log('returning with length: ' + length);
+        return new TlvParserResult<number>(length, null);
+    }
+
+    static parseValue(buffer: OctetBuffer, length: number, tag: Buffer): TlvParserResult<Buffer> {
+        if (buffer.remaining < length){
+            //console.log('need ' + length + ', available '+ buffer.remaining);
+            var missing = length - buffer.remaining;
+            var partialValue: Buffer = buffer.readBufferRemainig();
+            return new TlvParserResult<Buffer>(partialValue, TlvParserParseError.errorInsufficientValueData(tag, missing));
+        }
+        var value: Buffer = buffer.readBuffer(length);
+        return new TlvParserResult<Buffer>(value, null);
+    }
+
+
+}
+
+                                                                                                                                         
+
+export class TlvSerializerSerializeError implements Error {
+    constructor(public name: string, public message: string) {}
+
+    static errorPayloadToBig(tag: string, requested: number, maximum: number): TlvSerializerSerializeError {
+      return new TlvSerializerSerializeError('Error while serializing item ' + tag + '"', 'Provided length is ' + requested + ', maximum supported ' + maximum);
+    }
+}
+
+const TLV_SERIALIZE_MULTIBYTE_FLAG = 0x80;
+const SERIALIZE_UINT8_MAX: number = 0xFF;
+const SERIALIZE_UINT16_MAX: number = 0xFFFF;
+const SERIALIZE_UINT24_MAX: number = 0xFFFFFF;
+const SERIALIZE_UINT32_MAX: number = 0xFFFFFFFF;
+
+export class TlvSerializer {
+
+    static serializeItems(items: ITlv[]): Buffer {
+        var serializedItems: Buffer[] = [];
+        for (var item of items){
+            var itemBuffer: Buffer = TlvSerializer.serializeItem(item);
+            serializedItems.push(itemBuffer);
+        }
+
+        var serializedBuffer = Buffer.concat(serializedItems);
+        return serializedBuffer;
+    }
+
+    static serializeItem(item: ITlv): Buffer {
+        var serializedItem: Buffer;
+        if (item.type === TlvType.CONSTRUCTED){
+            serializedItem = TlvSerializer.serializeConstrucedItem(item);
+        } else {
+            serializedItem = TlvSerializer.serializePrimitiveItem(item);
+        }
+
+        return serializedItem;
+    }
+
+    static serializeConstrucedItem(item: ITlv): Buffer {
+        var serializedItems: Buffer[] = [];
+        for (var item of item.items){
+            var itemBuffer: Buffer = TlvSerializer.serializeItem(item);
+            serializedItems.push(itemBuffer);
+        }
+        var serializedItemsBuffer = Buffer.concat(serializedItems);
+
+        var tagBuffer: Buffer = new Buffer(item.tag, 'hex');
+        var lengthBuffer: Buffer = this.lengthBufferForLengt(item.tag, serializedItemsBuffer.length);
+
+        var serializedItem: Buffer = Buffer.concat([tagBuffer, lengthBuffer, serializedItemsBuffer]);
+        return serializedItem;
+    }
+
+    static serializePrimitiveItem(item: ITlv): Buffer {
+        var tagBuffer: Buffer = new Buffer(item.tag, 'hex');
+        var lengthBuffer: Buffer = this.lengthBufferForLengt(item.tag, item.value.length);
+
+        var serializedItem: Buffer = Buffer.concat([tagBuffer, lengthBuffer, item.value]);
+        return serializedItem;
+    }
+
+    static lengthBufferForLengt(tag: string, length: number): Buffer{
+        var octetBuffer: OctetBuffer = new OctetBuffer(new Buffer(1));
+
+        if (length < TLV_SERIALIZE_MULTIBYTE_FLAG){
+            octetBuffer.writeUInt8(length);
+        }
+        else if (length <= SERIALIZE_UINT8_MAX){
+            octetBuffer.writeUInt8(TLV_SERIALIZE_MULTIBYTE_FLAG | 0x01);
+            octetBuffer.writeUInt8(length);
+        }
+        else if (length <= SERIALIZE_UINT16_MAX){
+          octetBuffer.writeUInt8(TLV_SERIALIZE_MULTIBYTE_FLAG | 0x02);
+          octetBuffer.writeUInt16(length);
+        }
+        else if (length <= SERIALIZE_UINT24_MAX){
+          octetBuffer.writeUInt8(TLV_SERIALIZE_MULTIBYTE_FLAG | 0x03);
+          octetBuffer.writeUInt24(length);
+        }
+        else if (length <= SERIALIZE_UINT32_MAX){
+          octetBuffer.writeUInt8(TLV_SERIALIZE_MULTIBYTE_FLAG | 0x04);
+          octetBuffer.writeUInt32(length);
+        }
+        else {
+            throw TlvSerializerSerializeError.errorPayloadToBig(tag, length, SERIALIZE_UINT32_MAX);
+        }
+
+        return octetBuffer.backingBuffer;
+    }
+
+}
+
+                                                                                                                                                                      
+
+
+export class TlvFactoryParseError implements Error {
+    constructor(public name: string, public message: string, public partialTlv: ITlv[]) {}
+
+    static errorPartialResult(error: Error, partialTlv: ITlv[]): TlvFactoryParseError{
+        return new TlvFactoryParseError(error.name, error.message, partialTlv);
+    }
+}
+
+export class TlvFactoryTlvError implements Error {
+    constructor(public name: string, public message: string) {}
+
+    static errorEmpty(parameter: string): TlvFactoryTlvError {
+        return new TlvFactoryTlvError('Error creating tlv item', '"' + parameter + '" must not be <null> or ""');
+    }
+    static errorUnevenBytes(parameter: string, given: string): TlvFactoryTlvError {
+        return new TlvFactoryTlvError('Error creating tlv item', '"' + parameter + '" must be an even number, given "' + given + '"');
+    }
+    static errorContainsNonHex(parameter: string, given: string): TlvFactoryTlvError {
+        return new TlvFactoryTlvError('Error creating tlv item', '"' + parameter + '" must only contain hex characters, given "' + given + '"');
+    }
+    static errorUnsupportedType(parameter: string): TlvFactoryTlvError {
+        return new TlvFactoryTlvError('Error creating tlv item', '"' + parameter + '" is an unsupported format');
+    }
+}
+
+export class TlvFactorySerializeError implements Error {
+    constructor(public name: string, public message: string) {}
+
+    static errorUnsupportedType(parameter: string): TlvFactorySerializeError {
+        return new TlvFactorySerializeError('Error serializing ' + parameter, '"' + parameter + '" parameter type provided is not supported');
+    }
+}
+
+
+class Tlv implements ITlv {
+    public tag: string;
+    public type: TlvType;
+    public class: TlvClass;
+    public items: ITlv[];
+    public value: Buffer;
+
+    /**
+     * Internal methods, no type checking done! Use at your own risk :)
+     */
+    constructor(tag: Buffer, payload?: Buffer | ITlv[]) {
+        var tagBuffer: Buffer = tag;
+        var tagString: string = tagBuffer.toString('hex').toUpperCase();;
+
+        this.tag = tagString;
+        this.type = TlvHelper.typeFromTag(tagBuffer);
+        this.class = TlvHelper.classFromTag(tagBuffer);
+
+        this.value = TlvFactoryHelper.verifyUncheckedTlvPrimitivePayload(this.type, payload);
+        this.items = TlvFactoryHelper.verifyUncheckedTlvConstructedPayload(this.type, payload);
+    }
+}
+
+export class TlvFactory {
+    static primitiveTlv(tag: Buffer | string, value?: Buffer | string): ITlv {
+        var verifiedTag: Buffer = TlvFactoryHelper.verifyGenericTag(tag);
+        var verifiedValue: Buffer = TlvFactoryHelper.verifyPrimitiveValue(value);
+        var primitiveTlv: ITlv = new Tlv(verifiedTag, verifiedValue);
+        return primitiveTlv;
+    }
+
+    static constructedTlv(tag: Buffer | string, items?: ITlv[]): ITlv {
+        var verifiedTag: Buffer = TlvFactoryHelper.verifyGenericTag(tag);
+        var verifiedItems: ITlv[] = TlvFactoryHelper.verifyConstructedItems(items);
+        var constructedTlv: ITlv = new Tlv(verifiedTag, verifiedItems);
+        return constructedTlv;
+    }
+
+    static parse(buffer: Buffer | string): ITlv[] {
+        var verifiedValue: Buffer = TlvFactoryHelper.verifyParseValue(buffer);
+        var parsedResult: TlvParserResult<ITlv[]> = TlvParser.parseItems(verifiedValue);
+        if (parsedResult.error != null){
+            throw TlvFactoryParseError.errorPartialResult(parsedResult.error, parsedResult.result);
+        }
+        return parsedResult.result;
+    }
+
+    static serialize(items: ITlv | ITlv[]): Buffer {
+        var verifiedItems: ITlv[] = TlvFactoryHelper.verifySerializeItems(items);
+        var serializedItems: Buffer = TlvSerializer.serializeItems(verifiedItems);
+        return serializedItems;
+    }
+
+}
+
+class TlvFactoryHelper {
+
+    static verifyUncheckedTlvPrimitivePayload(type: TlvType, payload?: Buffer | ITlv[]): Buffer{
+        if(type !== TlvType.PRIMITIVE){
+            return null;
+        }
+        if (payload == null){
+            return new Buffer(0);
+        }
+
+        return <Buffer>payload;
+    }
+
+    static verifyUncheckedTlvConstructedPayload(type: TlvType, payload?: Buffer | ITlv[]): ITlv[]{
+        if(type !== TlvType.CONSTRUCTED){
+            return null;
+        }
+        if (payload == null){
+            return [];
+        }
+
+        return <ITlv[]>payload;
+    }
+
+
+    static verifyGenericTag(tag: Buffer | string): Buffer {
+        if (tag == null){
+            throw TlvFactoryTlvError.errorEmpty('tag');
+        }
+
+        var verifiedTag: Buffer = null;
+        if (Buffer.isBuffer(tag)){
+            verifiedTag = TlvFactoryHelper.fromBuffer(tag);
+        }
+        else if (typeof tag === 'string'){
+            verifiedTag = TlvFactoryHelper.fromString('tag', tag);
+        }
+        else {
+            throw TlvFactoryTlvError.errorUnsupportedType('tag');
+        }
+
+        return verifiedTag;
+    }
+
+
+    static verifyPrimitiveValue(buffer?: Buffer | string): Buffer {
+        var verifiedValue: Buffer = null;
+        if (buffer == null){
+            verifiedValue = TlvFactoryHelper.emptyBuffer();
+        }
+        else if (Buffer.isBuffer(buffer)){
+            verifiedValue = TlvFactoryHelper.fromBuffer(buffer);
+        }
+        else if (typeof buffer === 'string'){
+            verifiedValue = TlvFactoryHelper.fromString('value', buffer);
+        }
+        else {
+            throw TlvFactoryTlvError.errorUnsupportedType('value');
+        }
+
+        return verifiedValue;
+    }
+
+    static verifyConstructedItems(items?: ITlv[]): ITlv[] {
+        var verifiedItems: ITlv[] = null;
+        if (items == null){
+            verifiedItems = [];
+        }
+        if (Array.isArray(items)){
+            verifiedItems = items;
+        }
+        else {
+            throw TlvFactoryTlvError.errorUnsupportedType('items');
+        }
+
+        return verifiedItems;
+    }
+
+    static verifyParseValue(buffer?: Buffer | string): Buffer {
+        var verifiedValue: Buffer = null;
+        if (buffer == null){
+            verifiedValue = TlvFactoryHelper.emptyBuffer();
+        }
+        else if (Buffer.isBuffer(buffer)){
+            verifiedValue = TlvFactoryHelper.fromBuffer(buffer);
+        }
+        else if (typeof buffer === 'string'){
+            verifiedValue = TlvFactoryHelper.fromString('value', buffer);
+        }
+        else {
+            throw TlvFactoryTlvError.errorUnsupportedType('buffer');
+        }
+        return verifiedValue;
+    }
+
+    static verifySerializeItems(items: ITlv | ITlv[]): ITlv[] {
+        var verifiedItems: ITlv[] = null;
+        if (items == null){
+            throw TlvFactoryTlvError.errorUnsupportedType('items');
+        }
+        if (Array.isArray(items)){
+            verifiedItems = <ITlv[]>items;
+        }
+        else {
+            verifiedItems = [<ITlv>items];
+        }
+
+        return verifiedItems;
+    }
+
+
+    static emptyBuffer(): Buffer{
+        return new Buffer(0);
+    }
+
+    static fromBuffer(buffer: any): Buffer {
+        var verifiedBuffer: Buffer = buffer;
+        return verifiedBuffer;
+    }
+    static fromString(parameter: string, string: any): Buffer {
+        if (string.length % 2 !== 0){
+            throw TlvFactoryTlvError.errorUnevenBytes(parameter, string);
+        }
+
+        var verifiedString: Buffer = null;
+        try {
+            verifiedString = new Buffer(<string>string, 'hex');
+        }
+        catch (error){
+            throw TlvFactoryTlvError.errorContainsNonHex(parameter, string);
+        }
+
+        return verifiedString;
+    }
+
+}
+
 import events = require("events");
 import net = require("net");
 import stream = require("stream");
@@ -263,478 +839,7 @@ export class OctetBuffer {
 
 
 import { expect } from 'chai';
-import * as util from 'util';                                                                              
-
-/*
-var ob = require('OctetBuffer');
-var OctetBuffer = ob.OctetBuffer;
-*/
-    export enum TlvType {
-        PRIMITIVE,
-        CONSTRUCTED
-    }
-
-    export enum TlvClass {
-        UNIVERSAL,
-        APPLICATION,
-        CONTEXT_SPECIFIC,
-        PRIVATE
-    }
-
-    export interface ITlv {
-        tag: string;
-        type: TlvType;
-        class: TlvClass;
-        value: Buffer;
-        items: ITlv[];
-        serialize(): Buffer;
-    }
-
-
-    class Tlv implements ITlv {
-        public tag: string;
-        public type: TlvType;
-        public class: TlvClass;
-        public items: ITlv[];
-        public value: Buffer;
-
-        constructor(tag: Buffer, payload: ITlv[] | Buffer) {
-            var tagBuffer: Buffer = tag;
-            var tagString: string = tagBuffer.toString('hex').toUpperCase();;
-
-            this.tag = tagString;
-            this.type = TlvParser.typeFromTag(tagBuffer);
-            this.class = TlvParser.classFromTag(tagBuffer);
-            if (Buffer.isBuffer(payload)){
-                this.value = <Buffer>payload;
-                this.items = null;
-            }
-            else if (Array.isArray(payload)){
-                this.value = null;
-                this.items = <ITlv[]>payload;
-            }
-            else {
-                this.items = null;
-                this.value = null;
-            }
-        }
-
-        public serialize(): Buffer {
-            if (this.type === TlvType.CONSTRUCTED){
-                return TlvSerializer.serializeConstrucedItem(this);
-            }
-            return TlvSerializer.serializePrimitiveItem(this);
-        }
-    }
-
-    export class TlvFactory {
-        static primitiveTlv(tag: Buffer | string, value?: Buffer | string): ITlv {
-            var tagBuffer: Buffer = TlvParser.prepareTag(tag);
-            var valueBuffer: Buffer = TlvParser.prepareBuffer(valueBuffer);
-            return new Tlv(tagBuffer, valueBuffer);
-        }
-
-        static constructedTlv(tag: Buffer | string, items?: ITlv[]): ITlv {
-            var tagBuffer: Buffer = TlvParser.prepareTag(tag);
-            var itemsArray: ITlv[] = TlvParser.prepareItems(items);
-            return new Tlv(tagBuffer, itemsArray);
-        }
-
-        static parseVerbose(buffer: Buffer | string): ITlvParsingResult {
-            var parseBuffer: Buffer = TlvParser.prepareParseBuffer(buffer);
-            var octetBuffer: OctetBuffer = new OctetBuffer(parseBuffer);
-            var deserializeResult: TlvParserResult<ITlv[]> = TlvParser.parseItems(octetBuffer);
-            var result: TlvParsingResult = new TlvParsingResult(deserializeResult.result, deserializeResult.error);
-            return result;
-        }
-
-        static parse(buffer: Buffer | string): ITlv[] {
-            var result: TlvParsingResult = this.parseVerbose(buffer);
-            if (result.error !== null){
-                return null;
-            }
-            return result.result;
-        }
-
-
-    }
-
-    export interface ITlvParsingResult {
-        result: ITlv[];
-        error: Error;
-    }
-
-    class TlvParsingResult implements ITlvParsingResult {
-        constructor(public result: ITlv[], public error: Error) {}
-    }
-
-
-
-    class TlvError implements Error {
-        constructor(public name: string, public message: string) {}
-
-        static errorTagEmpty(): TlvError {
-            return new TlvParsingError('Error creating tag', 'Tag must NOT be <null> or ""');
-        }
-        static errorTagUnevenBytes(tag: string): TlvError {
-            return new TlvParsingError('Error creating tag', 'Tag must be an even number, given ' + tag);
-        }
-        static errorTagContainsNonHex(tag: string): TlvError {
-            return new TlvParsingError('Error creating tag', 'Tag must only contain hex characters, given ' + tag);
-        }
-    }
-
-    class TlvSerializationError implements Error {
-        constructor(public name: string, public message: string) {}
-
-        static errorPayloadToBig(tag: string, requested: number, maximum: number): TlvSerializationError {
-          return new TlvSerializationError('Error while serializing item ' + tag + '"', 'Present length is ' + requested + ', maximum supported ' + maximum);
-        }
-    }
-
-    class TlvParsingError implements Error {
-        constructor(public name: string, public message: string) {}
-
-        static errorBufferNull(): TlvError {
-            return new TlvParsingError('Error parsing data', 'Buffer must NOT be <null>');
-        }
-
-        static errorParsingTagInsufficientData(partialTag: Buffer): TlvParsingError {
-            return new TlvParsingError('Error while reading tag for item starting with "' + partialTag.toString('hex').toUpperCase() + '"', 'Need at least 1 additional byte to complete tag');
-        }
-        static errorParsingLengthInsufficientData(tag: Buffer, missing: number): TlvParsingError {
-            return new TlvParsingError('Error while reading length for item "' +  tag.toString('hex').toUpperCase() + '"', 'Need at least ' + missing + ' addional bytes to read length information');
-        }
-        static errorParsingLengthNumberTooBig(tag: Buffer, given: number): TlvParsingError {
-            return new TlvParsingError('Error while reading length for item "' + tag.toString('hex').toUpperCase() + '"', 'Maximum number of concatenated length bytes supported is 4, present ' + given);
-        }
-        static errorParsingValueInsufficientData(tag: Buffer, missing: number): TlvParsingError {
-            return new TlvParsingError('Error while reading value for item "' + tag.toString('hex').toUpperCase() + '"', 'Need at least ' + missing + ' addional bytes for reading complete value');
-        }
-    }
-
-    class TlvParserResult<T> {
-        constructor(public result: T, public error: Error) {}
-    }
-
-    class TlvParser {
-
-        static prepareTag(tag: Buffer | string): Buffer {
-            if (tag == null){
-                throw TlvError.errorTagEmpty();
-            }
-
-            var preparedTag: Buffer = null;
-            if (Buffer.isBuffer(tag)){
-                preparedTag = <Buffer>tag;
-            }
-            else if (typeof tag === 'string'){
-                if (tag.length % 2 !== 0){
-                    throw TlvError.errorTagUnevenBytes(<string>tag);
-                }
-                try {
-                    preparedTag = new Buffer(<string>tag, 'hex');
-                }
-                catch (error){
-                    throw TlvError.errorTagContainsNonHex(<string>tag);
-                }
-            }
-            else {
-                //TODO: throw error
-            }
-
-            return preparedTag;
-        }
-
-        static prepareBuffer(buffer?: Buffer | string): Buffer {
-            var preparedBuffer: Buffer = null;
-            if (buffer == null){
-                preparedBuffer = new Buffer(0);
-            }
-            else if (Buffer.isBuffer(buffer)){
-                preparedBuffer = <Buffer>buffer;
-            }
-            else if (typeof buffer === 'string'){
-                preparedBuffer = new Buffer(<string>buffer, 'hex');
-            }
-            else {
-                //TODO: throw error
-            }
-            return preparedBuffer;
-        }
-
-        static prepareItems(items?: ITlv[]): ITlv[] {
-            var preparedItems: ITlv[] = null;
-            if (items == null){
-                preparedItems = [];
-            }
-            if (Array.isArray(items)){
-                preparedItems = items;
-            }
-            else {
-                //TODO: throw error
-            }
-            return preparedItems;
-        }
-
-        static prepareParseBuffer(buffer: Buffer | string){
-            var preparedParseBuffer: Buffer = null;
-            if (buffer == null){
-                preparedParseBuffer = new Buffer(0);
-            }
-            else if (Buffer.isBuffer(buffer)){
-                preparedParseBuffer = <Buffer>buffer;
-            }
-            else if (typeof buffer === 'string'){
-                preparedParseBuffer = new Buffer(<string>buffer, 'hex');
-            }
-            else {
-                //TODO: throw error
-            }
-            return preparedParseBuffer;
-        }
-
-        static parseItems(buffer: OctetBuffer): TlvParserResult<ITlv[]> {
-            // console.log('start parsing items, remaining length: ' + buffer.remaining);
-            var items: ITlv[] = [];
-            var errorOccured: boolean = false;
-
-            while(buffer.remaining > 0){
-                this.skipZeroBytes(buffer);
-                var parseResult: TlvParserResult<ITlv> = this.parseItem(buffer);
-                if (parseResult.result != null){
-                  // console.log('got first item: ' + parseResult.result);
-                    items.push(parseResult.result);
-                }
-                if (parseResult.error != null){
-                  // console.log('error parsing item: ' + parseResult.error);
-                    return new TlvParserResult<ITlv[]>(items, parseResult.error);
-                }
-                // console.log('remaining length: ' + buffer.remaining);
-            }
-
-            //console.log('parsing completed with tags: ' +  util.inspect(items, {showHidden: false, depth: null}));
-            return new TlvParserResult<ITlv[]>(items, null);
-        }
-
-        static skipZeroBytes(buffer: OctetBuffer): OctetBuffer {
-            var peeked: number;
-            while(buffer.remaining > 0){
-                peeked = buffer.peek();
-                if (peeked !== 0x00){
-                    break;
-                }
-                buffer.readUInt8();
-            }
-            return buffer;
-        }
-
-        static parseItem(buffer: OctetBuffer): TlvParserResult<ITlv> {
-            //console.log('start parsing single items, remaining length: ' + buffer.remaining);
-
-            var tagParsingResult: TlvParserResult<Buffer> = this.parseTag(buffer);
-            if (tagParsingResult.error != null){
-                return new TlvParserResult<ITlv>(null, tagParsingResult.error);
-            }
-
-            var tagBuffer: Buffer = tagParsingResult.result;
-            var type: TlvType = this.typeFromTag(tagBuffer);
-            //console.log('got tag: ' + tagBuffer.toString('hex'));
-
-            var lengthParsingResult: TlvParserResult<number> = this.parseLength(buffer, tagBuffer);
-            if (lengthParsingResult.error != null){
-                return new TlvParserResult<ITlv>(null, lengthParsingResult.error);
-            }
-            var length: number = lengthParsingResult.result;
-            //console.log('got length: ' + length);
-
-            var valueParsingResult: TlvParserResult<Buffer> = this.parseValue(buffer, length, tagBuffer);
-            var value: Buffer = valueParsingResult.result;
-            if (valueParsingResult.error != null){
-                //we are returning the partially parsed data in case of an error
-                var tlvItem: ITlv = TlvFactory.primitiveTlv(tagBuffer, value);
-                return new TlvParserResult<ITlv>(tlvItem, valueParsingResult.error);
-            }
-            //console.log('got value: ' + value.toString('hex'));
-
-            if (type == TlvType.PRIMITIVE){
-                // console.log('returning with primitve tag');
-                var tlvItem: ITlv = TlvFactory.primitiveTlv(tagBuffer, value);
-                return new TlvParserResult<ITlv>(tlvItem, valueParsingResult.error);
-            }
-            else {
-                // console.log('detected constructed tag, now parsing payload');
-                var subBuffer = new OctetBuffer(value);
-                var subParsingResult: TlvParserResult<ITlv[]> = this.parseItems(subBuffer);
-                var tlvItem: ITlv = TlvFactory.constructedTlv(tagBuffer, subParsingResult.result);
-                // console.log('returning with constructed tag');
-                return new TlvParserResult<ITlv>(tlvItem, subParsingResult.error);
-            }
-        }
-
-
-        static parseTag(buffer: OctetBuffer): TlvParserResult<Buffer> {
-            if (buffer.remaining === 0){
-                return new TlvParserResult<Buffer>(null, TlvParsingError.errorParsingTagInsufficientData(new Buffer(0)));
-            }
-
-            var tagBuffer: OctetBuffer = new OctetBuffer();
-            var tagByte: number = buffer.readUInt8();
-            tagBuffer.writeUInt8(tagByte);
-            //console.log('first tag: ' + tagByte);
-
-            if ((tagByte & 0x1F) !== 0x1F){
-                //console.log('returning with one byte tag: ' + tagByte);
-                return new TlvParserResult<Buffer>(tagBuffer.backingBuffer, null);
-            }
-
-            do {
-                if (buffer.remaining === 0){
-                    return new TlvParserResult<Buffer>(tagBuffer.backingBuffer, TlvParsingError.errorParsingTagInsufficientData(tagBuffer.backingBuffer));
-                }
-
-                tagByte = buffer.readUInt8();
-                tagBuffer.writeUInt8(tagByte);
-                //console.log('and we read another round of tags: ' + tagByte);
-            } while((tagByte & 0x80) == 0x80);
-
-            return new TlvParserResult<Buffer>(tagBuffer.backingBuffer, null);
-        }
-
-        static parseLength(buffer: OctetBuffer, tag: Buffer): TlvParserResult<number> {
-            if (buffer.remaining == 0){
-                return new TlvParserResult<number>(null, TlvParsingError.errorParsingLengthInsufficientData(tag, 1));
-            }
-
-            var length: number = buffer.readUInt8();
-            // console.log('first length: ' + length);
-            if ((length & 0x80) != 0x80){
-                // console.log('returning with one byte length: ' + length);
-                return new TlvParserResult<number>(length, null);
-            }
-
-            var bytesToRead: number = (length & 0x7F);
-            if (bytesToRead > 4){
-                return new TlvParserResult<number>(null, TlvParsingError.errorParsingLengthNumberTooBig(tag, bytesToRead));
-            }
-            if (buffer.remaining < bytesToRead){
-              return new TlvParserResult<number>(null, TlvParsingError.errorParsingLengthInsufficientData(tag, bytesToRead - buffer.remaining));
-            }
-
-            var nextByte: number;
-            length = 0;
-            for (var i: number = 0; i < bytesToRead; i++){
-                nextByte = buffer.readUInt8();
-                // console.log('read another round of length: ' + nextByte);
-                length = length << 8;
-                length = length | nextByte;
-            }
-            // console.log('returning with length: ' + length);
-            return new TlvParserResult<number>(length, null);
-        }
-
-        static parseValue(buffer: OctetBuffer, length: number, tag: Buffer): TlvParserResult<Buffer> {
-            if (buffer.remaining < length){
-                //console.log('need ' + length + ', available '+ buffer.remaining);
-                var remaining = buffer.remaining;
-                var partialValue: Buffer = buffer.readBufferRemainig();
-                return new TlvParserResult<Buffer>(partialValue, TlvParsingError.errorParsingValueInsufficientData(tag, length - remaining));
-            }
-            var value: Buffer = buffer.readBuffer(length);
-            return new TlvParserResult<Buffer>(value, null);
-        }
-
-        static typeFromTag(tagBuffer: Buffer): TlvType {
-            var firstTagByte: number = tagBuffer.readUInt8(0);
-            var typeIdentifier = (firstTagByte & 0x20);
-
-            if (typeIdentifier == 0x20){
-                return TlvType.CONSTRUCTED;
-            }
-            else {
-                return TlvType.PRIMITIVE;
-            }
-        }
-
-        static classFromTag(tagBuffer: Buffer): TlvClass {
-            var firstTagByte: number = tagBuffer.readUInt8(0);
-            var classIdentifier: number = (firstTagByte & 0xC0);
-
-            if (classIdentifier == 0x00){
-                return TlvClass.UNIVERSAL;
-            }
-            if (classIdentifier == 0x40){
-                return TlvClass.APPLICATION;
-            }
-            if (classIdentifier == 0x80){
-                return TlvClass.CONTEXT_SPECIFIC;
-            }
-            if (classIdentifier == 0xC0){
-                return TlvClass.PRIVATE;
-            }
-        }
-    }
-
-
-    class TlvSerializer {
-
-        static serializeConstrucedItem(item: ITlv): Buffer {
-            var serializedItems: Buffer[] = [];
-            item.items.forEach((item) => {
-                serializedItems.push(item.serialize());
-            });
-            var serializedItemsBuffer = Buffer.concat(serializedItems);
-
-            var tagBuffer: Buffer = new Buffer(item.tag, 'hex');
-            var lengthBuffer: Buffer = this.lengthBufferForLengt(item.tag, serializedItemsBuffer.length);
-
-            var serializedItem: Buffer = Buffer.concat([tagBuffer, lengthBuffer, serializedItemsBuffer]);
-            return serializedItem;
-        }
-
-        static serializePrimitiveItem(item: ITlv): Buffer {
-            var tagBuffer: Buffer = new Buffer(item.tag, 'hex');
-            var lengthBuffer: Buffer = this.lengthBufferForLengt(item.tag, item.value.length);
-
-            var serializedItem: Buffer = Buffer.concat([tagBuffer, lengthBuffer, item.value]);
-            return serializedItem;
-        }
-
-        static lengthBufferForLengt(tag: string, length: number): Buffer{
-
-            //TODO: in the worst case we create an additional buffer internally, rethink this approach
-            var octetBuffer: OctetBuffer = new OctetBuffer(new Buffer(1));
-
-            if (length < 0x80){
-                octetBuffer.writeUInt8(length);
-            }
-            else if (length <= 0xFF){
-                octetBuffer.writeUInt8(0x81);
-                octetBuffer.writeUInt8(length);
-            }
-            else if (length <= 0xFFFF){
-              octetBuffer.writeUInt8(0x82);
-              octetBuffer.writeUInt16(length);
-            }
-            else if (length <= 0xFFFFFF){
-              octetBuffer.writeUInt8(0x83);
-              octetBuffer.writeUInt24(length);
-            }
-            else if (length <= 0xFFFFFFFF){
-              octetBuffer.writeUInt8(0x84);
-              octetBuffer.writeUInt32(length);
-            }
-            else {
-                throw TlvSerializationError.errorPayloadToBig(tag, length, 0xFFFFFFFF);
-            }
-
-            return octetBuffer.backingBuffer;
-        }
-
-
-    }
-
-import { expect } from 'chai';                                                                               
+import { expect } from 'chai';                                                                                                                    
 
 function tlvGenerator(tag: string, length:string, value: string): Buffer {
     var tagBuffer: Buffer = new Buffer(tag.replace(' ', ''), 'hex');
@@ -751,14 +856,12 @@ describe('Tlv', () => {
     describe('deserialize', () => {
 
         var buffer: Buffer;
-        var result: ITlvParsingResult;
         var items: ITlv[];
         var error: Error;
 
         it('can parse 1 byte tag primitve tlv object', () => {
-            buffer = tlvGenerator('5A', '02', '2020');
-            result = TlvFactory.parseVerbose(buffer);
-            items = result.result;
+            buffer = tlvGenerator('005A', '02', '2020');
+            items = TlvFactory.parse(buffer);
 
             expect(items).to.exist;
             var item: ITlv = items.pop()
@@ -767,8 +870,7 @@ describe('Tlv', () => {
         });
         it('can parse 2 byte tag primitve tlv object', () => {
             buffer = tlvGenerator('9F02', '02', '2020');
-            result = TlvFactory.parseVerbose(buffer);
-            items = result.result;
+            items = TlvFactory.parse(buffer);
 
             expect(items).to.exist;
             var item: ITlv = items.pop()
@@ -777,8 +879,7 @@ describe('Tlv', () => {
         });
         it('can parse 3 byte tag primitve tlv object', () => {
             buffer = tlvGenerator('DFAE03', '02', '2020');
-            result = TlvFactory.parseVerbose(buffer);
-            items = result.result;
+            items = TlvFactory.parse(buffer);
 
             expect(items).to.exist;
             var item: ITlv = items.pop()
@@ -788,8 +889,7 @@ describe('Tlv', () => {
 
         it('can parse a constructed tlv object', () => {
             buffer = tlvGenerator('E0', '08', '9A02AABB 9B02DDFF');
-            result = TlvFactory.parseVerbose(buffer);
-            items = result.result;
+            items = TlvFactory.parse(buffer);
 
             expect(items).to.exist;
             var item: ITlv = items.pop()
@@ -799,8 +899,7 @@ describe('Tlv', () => {
 
         it('can parse 1 byte tag with 1 byte length primitve tlv object', () => {
             buffer = tlvGenerator('DFAE03', '8102', '2020');
-            result = TlvFactory.parseVerbose(buffer);
-            items = result.result;
+            items = TlvFactory.parse(buffer);
 
             expect(items).to.exist;
             var item: ITlv = items.pop()
@@ -809,8 +908,7 @@ describe('Tlv', () => {
         });
         it('can parse 1 byte tag with 2 byte length primitve tlv object', () => {
             buffer = tlvGenerator('DFAE03', '820002', '2020');
-            result = TlvFactory.parseVerbose(buffer);
-            items = result.result;
+            items = TlvFactory.parse(buffer);
 
             expect(items).to.exist;
             var item: ITlv = items.pop()
@@ -819,8 +917,7 @@ describe('Tlv', () => {
         });
         it('can parse 1 byte tag with 3 byte length primitve tlv object', () => {
             buffer = tlvGenerator('DFAE03', '83000002', '2020');
-            result = TlvFactory.parseVerbose(buffer);
-            items = result.result;
+            items = TlvFactory.parse(buffer);
 
             expect(items).to.exist;
             var item: ITlv = items.pop()
@@ -829,8 +926,7 @@ describe('Tlv', () => {
         });
         it('can parse 1 byte tag with 4 byte length primitve tlv object', () => {
             buffer = tlvGenerator('DFAE03', '8400000002', '2020');
-            result = TlvFactory.parseVerbose(buffer);
-            items = result.result;
+            items = TlvFactory.parse(buffer);
 
             expect(items).to.exist;
             var item: ITlv = items.pop()
@@ -840,9 +936,7 @@ describe('Tlv', () => {
 
         it('parses 0 length item', () => {
             buffer = tlvGenerator('12', '00', '');
-            result = TlvFactory.parseVerbose(buffer);
-            items = result.result;
-            error = result.error;
+            items = TlvFactory.parse(buffer);
 
             expect(items).to.exist;
             var item: ITlv = items.pop()
@@ -853,13 +947,11 @@ describe('Tlv', () => {
 
         it('fails on empty data', () => {
             buffer = tlvGenerator('DF', '', '');
-            result = TlvFactory.parseVerbose(buffer);
-            items = result.result;
-            error = result.error;
+            var throwFunction = () => {
+                items = TlvFactory.parse(buffer);
+            }
 
-            expect(items).to.exist;
-            expect(items.length).to.equal(0);
-            expect(error).to.exist;
+            expect(throwFunction).to.throw;
         });
 
     });
