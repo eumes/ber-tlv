@@ -1,5 +1,6 @@
 import { ITlv, TlvType, TlvClass, TlvHelper } from './Tlv';
-import { OctetBuffer } from '../node_modules/octet-buffer/dist/octet-buffer';
+
+import { OctetBuffer } from 'octet-buffer';
 
 export class TlvSerializerSerializeError implements Error {
     constructor(public name: string, public message: string) {}

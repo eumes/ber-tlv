@@ -1,6 +1,7 @@
 import { ITlv, TlvType, TlvClass, TlvHelper } from './Tlv';
 import { TlvFactory } from './TlvFactory';
-import { OctetBuffer } from '../node_modules/octet-buffer/dist/octet-buffer';
+
+import { OctetBuffer } from 'octet-buffer';
 
 class TlvParserParseError implements Error {
     constructor(public name: string, public message: string) {}

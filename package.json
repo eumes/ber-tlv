@@ -5,9 +5,9 @@
   "license": "MIT",
   "description": "Simple TLV implementation providing structured access to your data.",
   "private": true,
-  "main": "./dist/ber-tlv.js",
+  "main": "./module/ber-tlv.js",
   "typescript": {
-    "definition": "./dist/ber-tlv.d.ts"
+    "definition": "./module/ber-tlv.d.ts"
   },
   "scripts": {
     "prepublish": "tsd reinstall -s",
@@ -16,12 +16,13 @@
     "test": "gulp test"
   },
   "devDependencies": {
+    "chai": "^2.1.1",
     "del": "^1.2.0",
     "gulp": "^3.9.0",
-    "mocha": "^2.2.1",
     "gulp-mocha": "^2.0.0",
-    "chai": "^2.1.1",
-    "tsproject": "git+https://github.com/eumes/tsproject.git#bbb87e8b0d8b9be23f13c6783d8b70336cd3fc38",
-  	"octet-buffer": "file:../octet-buffer"
+    "gulp-typescript": "^2.8.0",
+    "merge2": "^0.3.6",
+    "mocha": "^2.2.1",
+    "octet-buffer": "file:../octet-buffer"
   }
 }
