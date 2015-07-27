@@ -1,36 +1,40 @@
 var del = require('del');
 var gulp = require('gulp');
 var mocha = require('gulp-mocha');
-var tsproject = require('tsproject');
+var ts = require('gulp-typescript');
+var merge = require('merge2');
 
-gulp.task('clean.test', function () {
-  del.sync(['./test'], { force: true });
+gulp.task('typescript.clean', function () {
+  del.sync(['./release'], { force: true });
 });
 
-gulp.task('clean.dist', function () {
-  del.sync(['./dist'], { force: true });
+gulp.task('typescript.build', ['typescript.clean'], function() {
+  var tsProject = ts.createProject('tsconfig.json', { rootDir: './src' });
+  var tsResult = tsProject.src()
+      .pipe(ts(tsProject));
+
+
+  return merge([
+      tsResult.dts.pipe(gulp.dest('release/definitions')),
+      tsResult.js.pipe(gulp.dest('release/js'))
+  ]);
+  return tsResult.js.pipe(gulp.dest('release'));
 });
 
+gulp.task('build', ['typescript.build']);
 
-gulp.task('typescript.src', ['clean.dist'], function() {
-  return tsproject.src('./tsconfig.json', { logLevel: 1 }).pipe(gulp.dest('./dist'));
-});
-
-gulp.task('build', ['typescript.src']);
-
-
-gulp.task('typescript.test', ['clean.test'], function() {
-  return tsproject.src('tsconfig.test.json', { logLevel: 1 }).pipe(gulp.dest('./test'));
-});
-
-
-gulp.task('mocha.test', ['typescript.test'], function() {
-    return gulp.src('./test/**/*-test.js', { read: false })
+gulp.task('mocha.test', ['typescript.build'], function() {
+    return gulp.src('./release/**/*-Specs.js', { read: false })
         .pipe(mocha({ reporter: 'spec' }));
 });
 
 gulp.task('test', ['mocha.test']);
 
+
+gulp.task('test-standalone', function() {
+    return gulp.src('./release/**/*-Specs.js', { read: false })
+        .pipe(mocha({ reporter: 'spec' }));
+});
 
 /*
 gulp.task('typescript:lint', function(){

@@ -1,5 +1,5 @@
 import { ITlv } from './Tlv';
-import { OctetBuffer } from '../node_modules/octet-buffer/dist/octet-buffer';
+import { OctetBuffer } from 'octet-buffer';
 export declare class TlvParserResult<T> {
     result: T;
     error: Error;

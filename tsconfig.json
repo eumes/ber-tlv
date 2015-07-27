@@ -1,0 +1,26 @@
+{
+    "compilerOptions": {
+        "declaration": true,
+        "module": "commonjs",
+        "removeComments": true,
+        "sourceMap": false,
+        "target": "es5",
+        "noImplicitAny": true,
+        "outDir": "./dist",
+        "rootDir": "./src"
+    },
+    "compileOnSave": false,
+    "filesGlob": [
+        "./src/**/*.ts",
+        "./typings/tsd.d.ts",
+        "!./node_modules/**/*.ts"
+    ],
+    "files": [
+        "./src/Tlv-Specs.ts",
+        "./src/Tlv.ts",
+        "./src/TlvFactory.ts",
+        "./src/TlvParser.ts",
+        "./src/TlvSerializer.ts",
+        "./typings/tsd.d.ts"
+    ]
+}

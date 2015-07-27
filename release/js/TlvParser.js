@@ -1,6 +1,6 @@
 var Tlv_1 = require('./Tlv');
 var TlvFactory_1 = require('./TlvFactory');
-var octet_buffer_1 = require('../node_modules/octet-buffer/dist/octet-buffer');
+var octet_buffer_1 = require('octet-buffer');
 var TlvParserParseError = (function () {
     function TlvParserParseError(name, message) {
         this.name = name;

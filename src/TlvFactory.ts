@@ -2,7 +2,6 @@ import { ITlv, TlvType, TlvClass, TlvHelper } from './Tlv';
 import { TlvParser, TlvParserResult } from './TlvParser';
 import { TlvSerializer } from './TlvSerializer';
 
-
 export class TlvFactoryParseError implements Error {
     constructor(public name: string, public message: string, public partialTlv: ITlv[]) {}
 
