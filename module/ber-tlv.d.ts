@@ -33,6 +33,6 @@ declare module BerTlv{
     }
 }
 
-declare module 'ber-tvl'{
+declare module 'ber-tlv'{
   export = BerTlv;
 }
