@@ -12,7 +12,6 @@ var TlvFactoryParseError = (function () {
     };
     return TlvFactoryParseError;
 })();
-exports.TlvFactoryParseError = TlvFactoryParseError;
 var TlvFactoryTlvError = (function () {
     function TlvFactoryTlvError(name, message) {
         this.name = name;
@@ -32,7 +31,6 @@ var TlvFactoryTlvError = (function () {
     };
     return TlvFactoryTlvError;
 })();
-exports.TlvFactoryTlvError = TlvFactoryTlvError;
 var TlvFactorySerializeError = (function () {
     function TlvFactorySerializeError(name, message) {
         this.name = name;
@@ -43,7 +41,6 @@ var TlvFactorySerializeError = (function () {
     };
     return TlvFactorySerializeError;
 })();
-exports.TlvFactorySerializeError = TlvFactorySerializeError;
 var Tlv = (function () {
     function Tlv(tag, payload) {
         var tagBuffer = tag;

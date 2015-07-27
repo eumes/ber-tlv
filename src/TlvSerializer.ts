@@ -2,7 +2,7 @@ import { ITlv, TlvType, TlvClass, TlvHelper } from './Tlv';
 
 import { OctetBuffer } from 'octet-buffer';
 
-export class TlvSerializerSerializeError implements Error {
+class TlvSerializerSerializeError implements Error {
     constructor(public name: string, public message: string) {}
 
     static errorPayloadToBig(tag: string, requested: number, maximum: number): TlvSerializerSerializeError {

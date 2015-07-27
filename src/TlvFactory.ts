@@ -2,7 +2,12 @@ import { ITlv, TlvType, TlvClass, TlvHelper } from './Tlv';
 import { TlvParser, TlvParserResult } from './TlvParser';
 import { TlvSerializer } from './TlvSerializer';
 
-export class TlvFactoryParseError implements Error {
+export interface IParseError extends Error{
+    partialTlv: ITlv[];
+}
+
+
+class TlvFactoryParseError implements Error {
     constructor(public name: string, public message: string, public partialTlv: ITlv[]) {}
 
     static errorPartialResult(error: Error, partialTlv: ITlv[]): TlvFactoryParseError{
@@ -10,7 +15,7 @@ export class TlvFactoryParseError implements Error {
     }
 }
 
-export class TlvFactoryTlvError implements Error {
+class TlvFactoryTlvError implements Error {
     constructor(public name: string, public message: string) {}
 
     static errorEmpty(parameter: string): TlvFactoryTlvError {
@@ -27,7 +32,7 @@ export class TlvFactoryTlvError implements Error {
     }
 }
 
-export class TlvFactorySerializeError implements Error {
+class TlvFactorySerializeError implements Error {
     constructor(public name: string, public message: string) {}
 
     static errorUnsupportedType(parameter: string): TlvFactorySerializeError {
