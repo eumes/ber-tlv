@@ -1,5 +1,6 @@
 import { expect } from 'chai';
-import { TlvType, TlvClass, TlvFactory, ITlv, ITlvParsingResult} from './Tlv';
+import { ITlv, TlvType, TlvClass } from './Tlv';
+import { TlvFactory, IParseError } from './TlvFactory';
 
 function tlvGenerator(tag: string, length:string, value: string): Buffer {
     var tagBuffer: Buffer = new Buffer(tag.replace(' ', ''), 'hex');
@@ -16,14 +17,12 @@ describe('Tlv', () => {
     describe('deserialize', () => {
 
         var buffer: Buffer;
-        var result: ITlvParsingResult;
         var items: ITlv[];
         var error: Error;
 
         it('can parse 1 byte tag primitve tlv object', () => {
-            buffer = tlvGenerator('5A', '02', '2020');
-            result = TlvFactory.parseVerbose(buffer);
-            items = result.result;
+            buffer = tlvGenerator('005A', '02', '2020');
+            items = TlvFactory.parse(buffer);
 
             expect(items).to.exist;
             var item: ITlv = items.pop()
@@ -32,8 +31,7 @@ describe('Tlv', () => {
         });
         it('can parse 2 byte tag primitve tlv object', () => {
             buffer = tlvGenerator('9F02', '02', '2020');
-            result = TlvFactory.parseVerbose(buffer);
-            items = result.result;
+            items = TlvFactory.parse(buffer);
 
             expect(items).to.exist;
             var item: ITlv = items.pop()
@@ -42,8 +40,7 @@ describe('Tlv', () => {
         });
         it('can parse 3 byte tag primitve tlv object', () => {
             buffer = tlvGenerator('DFAE03', '02', '2020');
-            result = TlvFactory.parseVerbose(buffer);
-            items = result.result;
+            items = TlvFactory.parse(buffer);
 
             expect(items).to.exist;
             var item: ITlv = items.pop()
@@ -53,8 +50,7 @@ describe('Tlv', () => {
 
         it('can parse a constructed tlv object', () => {
             buffer = tlvGenerator('E0', '08', '9A02AABB 9B02DDFF');
-            result = TlvFactory.parseVerbose(buffer);
-            items = result.result;
+            items = TlvFactory.parse(buffer);
 
             expect(items).to.exist;
             var item: ITlv = items.pop()
@@ -64,8 +60,7 @@ describe('Tlv', () => {
 
         it('can parse 1 byte tag with 1 byte length primitve tlv object', () => {
             buffer = tlvGenerator('DFAE03', '8102', '2020');
-            result = TlvFactory.parseVerbose(buffer);
-            items = result.result;
+            items = TlvFactory.parse(buffer);
 
             expect(items).to.exist;
             var item: ITlv = items.pop()
@@ -74,8 +69,7 @@ describe('Tlv', () => {
         });
         it('can parse 1 byte tag with 2 byte length primitve tlv object', () => {
             buffer = tlvGenerator('DFAE03', '820002', '2020');
-            result = TlvFactory.parseVerbose(buffer);
-            items = result.result;
+            items = TlvFactory.parse(buffer);
 
             expect(items).to.exist;
             var item: ITlv = items.pop()
@@ -84,8 +78,7 @@ describe('Tlv', () => {
         });
         it('can parse 1 byte tag with 3 byte length primitve tlv object', () => {
             buffer = tlvGenerator('DFAE03', '83000002', '2020');
-            result = TlvFactory.parseVerbose(buffer);
-            items = result.result;
+            items = TlvFactory.parse(buffer);
 
             expect(items).to.exist;
             var item: ITlv = items.pop()
@@ -94,8 +87,7 @@ describe('Tlv', () => {
         });
         it('can parse 1 byte tag with 4 byte length primitve tlv object', () => {
             buffer = tlvGenerator('DFAE03', '8400000002', '2020');
-            result = TlvFactory.parseVerbose(buffer);
-            items = result.result;
+            items = TlvFactory.parse(buffer);
 
             expect(items).to.exist;
             var item: ITlv = items.pop()
@@ -105,9 +97,7 @@ describe('Tlv', () => {
 
         it('parses 0 length item', () => {
             buffer = tlvGenerator('12', '00', '');
-            result = TlvFactory.parseVerbose(buffer);
-            items = result.result;
-            error = result.error;
+            items = TlvFactory.parse(buffer);
 
             expect(items).to.exist;
             var item: ITlv = items.pop()
@@ -118,13 +108,11 @@ describe('Tlv', () => {
 
         it('fails on empty data', () => {
             buffer = tlvGenerator('DF', '', '');
-            result = TlvFactory.parseVerbose(buffer);
-            items = result.result;
-            error = result.error;
+            var throwFunction = () => {
+                items = TlvFactory.parse(buffer);
+            }
 
-            expect(items).to.exist;
-            expect(items.length).to.equal(0);
-            expect(error).to.exist;
+            expect(throwFunction).to.throw;
         });
 
     });

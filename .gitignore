@@ -1,7 +1,6 @@
 #exclude dev/transient/generated files
 node_modules
-
-tsconfig.json
+release/*/*-Specs.*
 
 #exlude system files
 .DS_Store
