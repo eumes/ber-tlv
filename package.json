@@ -1,30 +1,36 @@
 {
-  "name": "ber-tlv",
-  "version": "0.0.0",
-  "author": "Simon Eumes",
-  "license": "MIT",
-  "description": "Simple TLV implementation providing structured access to your data.",
-  "private": true,
-  "main": "./module/ber-tlv.js",
-  "typescript": {
-    "definition": "./module/ber-tlv.d.ts"
-  },
-  "scripts": {
-    "prepublish": "tsd reinstall -s",
-    "start": "gulp",
-    "build": "gulp build",
-    "test": "gulp test"
-  },
-  "devDependencies": {
-    "chai": "^2.1.1",
-    "del": "^1.2.0",
-    "gulp": "^3.9.0",
-    "gulp-mocha": "^2.0.0",
-    "gulp-typescript": "^2.8.0",
-    "merge2": "^0.3.6",
-    "mocha": "^2.2.1"
-  },
-  "dependencies": {
-      "octet-buffer": "file:../octet-buffer"
-  }
+    "name": "ber-tlv",
+    "version": "0.0.1",
+    "description": "Simple TLV implementation, providing parsing and serialization of TLV encoded data",
+    "author": "Simon Eumes <simon@sim0n.net>",
+    "license": "MIT",
+    "repository": {
+        "type": "git",
+        "url": "https://github.com/eumes/ber-tlv"
+    },
+    "main": "./module/ber-tlv.js",
+    "typescript": {
+      "definition": "./module/ber-tlv.d.ts"
+    },
+    "scripts": {
+      "prepublish": "tsd reinstall -s",
+      "start": "gulp",
+      "build": "gulp build",
+      "test": "gulp test"
+    },
+    "keywords": [
+        "tlv", "ber-tlv", "emv", "typescript"
+    ],
+    "devDependencies": {
+      "chai": "^2.1.1",
+      "del": "^1.2.0",
+      "gulp": "^3.9.0",
+      "gulp-mocha": "^2.0.0",
+      "gulp-typescript": "^2.8.0",
+      "merge2": "^0.3.6",
+      "mocha": "^2.2.1"
+    },
+    "dependencies": {
+        "octet-buffer": "^0.0.1"
+    }
 }

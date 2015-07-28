@@ -6,8 +6,7 @@ export interface IParseError extends Error{
     partialTlv: ITlv[];
 }
 
-
-class TlvFactoryParseError implements Error {
+class TlvFactoryParseError implements IParseError {
     constructor(public name: string, public message: string, public partialTlv: ITlv[]) {}
 
     static errorPartialResult(error: Error, partialTlv: ITlv[]): TlvFactoryParseError{

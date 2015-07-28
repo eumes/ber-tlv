@@ -10,7 +10,6 @@ var TlvSerializerSerializeError = (function () {
     };
     return TlvSerializerSerializeError;
 })();
-exports.TlvSerializerSerializeError = TlvSerializerSerializeError;
 var TLV_SERIALIZE_MULTIBYTE_FLAG = 0x80;
 var SERIALIZE_UINT8_MAX = 0xFF;
 var SERIALIZE_UINT16_MAX = 0xFFFF;

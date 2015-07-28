@@ -1,6 +1,6 @@
 import { expect } from 'chai';
 import { ITlv, TlvType, TlvClass } from './Tlv';
-import { TlvFactory, TlvFactoryParseError } from './TlvFactory';
+import { TlvFactory, IParseError } from './TlvFactory';
 
 function tlvGenerator(tag: string, length:string, value: string): Buffer {
     var tagBuffer: Buffer = new Buffer(tag.replace(' ', ''), 'hex');
