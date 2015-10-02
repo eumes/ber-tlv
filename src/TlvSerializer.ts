@@ -42,8 +42,8 @@ export class TlvSerializer {
 
     static serializeConstrucedItem(item: ITlv): Buffer {
         var serializedItems: Buffer[] = [];
-        for (var item of item.items){
-            var itemBuffer: Buffer = TlvSerializer.serializeItem(item);
+        for (var subitem of item.items){
+            var itemBuffer: Buffer = TlvSerializer.serializeItem(subitem);
             serializedItems.push(itemBuffer);
         }
         var serializedItemsBuffer = Buffer.concat(serializedItems);

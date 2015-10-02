@@ -143,11 +143,11 @@ var TlvFactoryHelper = (function () {
         if (items == null) {
             verifiedItems = [];
         }
-        if (Array.isArray(items)) {
+        else if (Array.isArray(items)) {
             verifiedItems = items;
         }
         else {
-            throw TlvFactoryTlvError.errorUnsupportedType('items');
+            verifiedItems = [items];
         }
         return verifiedItems;
     };
@@ -193,6 +193,7 @@ var TlvFactoryHelper = (function () {
         }
         var verifiedString = null;
         try {
+            string = string.toUpperCase();
             verifiedString = new Buffer(string, 'hex');
         }
         catch (error) {

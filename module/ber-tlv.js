@@ -6,7 +6,6 @@ var BerTlv = {};
 BerTlv.ITlv = Tlv.ITlv;
 BerTlv.TlvType = Tlv.TlvType;
 BerTlv.TlvClass = Tlv.TlvClass;
-BerTlv.TlvHelper = Tlv.TlvHelper;
 //TlvFactory
 BerTlv.IParseError = TlvFactory.IParseError;
 BerTlv.TlvFactory = TlvFactory.TlvFactory;

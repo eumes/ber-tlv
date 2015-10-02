@@ -71,7 +71,7 @@ export class TlvFactory {
         return primitiveTlv;
     }
 
-    static constructedTlv(tag: Buffer | string, items?: ITlv[]): ITlv {
+    static constructedTlv(tag: Buffer | string, items?: ITlv | ITlv[]): ITlv {
         var verifiedTag: Buffer = TlvFactoryHelper.verifyGenericTag(tag);
         var verifiedItems: ITlv[] = TlvFactoryHelper.verifyConstructedItems(items);
         var constructedTlv: ITlv = new Tlv(verifiedTag, verifiedItems);
@@ -158,16 +158,16 @@ class TlvFactoryHelper {
         return verifiedValue;
     }
 
-    static verifyConstructedItems(items?: ITlv[]): ITlv[] {
+    static verifyConstructedItems(items?: ITlv | ITlv[]): ITlv[] {
         var verifiedItems: ITlv[] = null;
         if (items == null){
             verifiedItems = [];
         }
-        if (Array.isArray(items)){
-            verifiedItems = items;
+        else if (Array.isArray(items)){
+            verifiedItems = <ITlv[]>items;
         }
         else {
-            throw TlvFactoryTlvError.errorUnsupportedType('items');
+            verifiedItems = [<ITlv>items];
         }
 
         return verifiedItems;
@@ -221,6 +221,7 @@ class TlvFactoryHelper {
 
         var verifiedString: Buffer = null;
         try {
+            string = string.toUpperCase();
             verifiedString = new Buffer(<string>string, 'hex');
         }
         catch (error){

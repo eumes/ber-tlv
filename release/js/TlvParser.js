@@ -47,6 +47,9 @@ var TlvParser = (function () {
         var items = [];
         while (octetBuffer.remaining > 0) {
             this.skipZeroBytes(octetBuffer);
+            if (octetBuffer.remaining === 0) {
+                continue;
+            }
             var parseResult = this.parseItem(octetBuffer);
             if (parseResult.result !== null) {
                 items.push(parseResult.result);
