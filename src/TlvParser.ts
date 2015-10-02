@@ -188,7 +188,7 @@ export class TlvParser {
         if (buffer.remaining < length){
             //console.log('need ' + length + ', available '+ buffer.remaining);
             var missing = length - buffer.remaining;
-            var partialValue: Buffer = buffer.readBufferRemainig();
+            var partialValue: Buffer = buffer.readBufferRemaining();
             return new TlvParserResult<Buffer>(partialValue, TlvParserParseError.errorInsufficientValueData(tag, missing));
         }
         var value: Buffer = buffer.readBuffer(length);
