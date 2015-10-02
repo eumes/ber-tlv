@@ -27,7 +27,7 @@ declare module BerTlv{
     }
     export class TlvFactory {
         static primitiveTlv(tag: Buffer | string, value?: Buffer | string): ITlv;
-        static constructedTlv(tag: Buffer | string, items?: ITlv[]): ITlv;
+        static constructedTlv(tag: Buffer | string, items?: ITlv | ITlv[]): ITlv;
         static parse(buffer: Buffer | string): ITlv[];
         static serialize(items: ITlv | ITlv[]): Buffer;
     }

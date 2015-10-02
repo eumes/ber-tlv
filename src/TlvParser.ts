@@ -45,6 +45,9 @@ export class TlvParser {
 
         while(octetBuffer.remaining > 0){
             this.skipZeroBytes(octetBuffer);
+            if(octetBuffer.remaining === 0){
+                continue;
+            }
             var parseResult: TlvParserResult<ITlv> = this.parseItem(octetBuffer);
             if (parseResult.result !== null){
                 items.push(parseResult.result);
@@ -65,6 +68,7 @@ export class TlvParser {
                 break;
             }
             buffer.readUInt8();
+            //console.log('ignoring <00> value');
         }
         return buffer;
     }

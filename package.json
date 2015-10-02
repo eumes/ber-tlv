@@ -13,7 +13,6 @@
       "definition": "./module/ber-tlv.d.ts"
     },
     "scripts": {
-      "prepublish": "tsd reinstall -s",
       "start": "gulp",
       "build": "gulp build",
       "test": "gulp test"
@@ -31,6 +30,6 @@
       "mocha": "^2.2.1"
     },
     "dependencies": {
-        "octet-buffer": "^0.0.1"
+        "octet-buffer": "^0.9.0"
     }
 }

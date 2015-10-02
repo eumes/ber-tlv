@@ -12,13 +12,17 @@ function tlvGenerator(tag: string, length:string, value: string): Buffer {
 /**
  * Unit tests
  */
-describe('Tlv', () => {
+describe('TlvFactory', () => {
 
-    describe('deserialize', () => {
+    var buffer: Buffer;
+    var items: ITlv[];
+    var error: Error;
+    var serialized: Buffer;
 
-        var buffer: Buffer;
-        var items: ITlv[];
-        var error: Error;
+    var tlvs: ITlv[];
+    var tlv: ITlv;
+
+    describe('#parse', () => {
 
         it('can parse 1 byte tag primitve tlv object', () => {
             buffer = tlvGenerator('005A', '02', '2020');
@@ -106,6 +110,19 @@ describe('Tlv', () => {
             expect(item.type).to.equal(TlvType.PRIMITIVE);
         });
 
+        it('ignores 00 in between', () => {
+            buffer =  new Buffer('00005A0101005702020200', 'hex');
+            items = TlvFactory.parse(buffer);
+
+            expect(items.length).to.equal(2);
+            expect(items).to.exist;
+            var item: ITlv = items.pop()
+            expect(item.tag).to.equal('57');
+            expect(item.value).to.exist;
+            expect(item.type).to.equal(TlvType.PRIMITIVE);
+        });
+        //ignores 00
+
         it('fails on empty data', () => {
             buffer = tlvGenerator('DF', '', '');
             var throwFunction = () => {
@@ -117,27 +134,305 @@ describe('Tlv', () => {
 
     });
 
+    describe('#primitiveTlv', () => {
+
+        var tlv: ITlv;
+        var serialized: Buffer;
+
+        it('creates primitive with <string>(uppercase)', () => {
+            var givenTagString = '5A';
+            var givenValueString = '90DF';
+            var expectedBuffer = new Buffer('5A0290DF', 'hex');
+
+            tlv = TlvFactory.primitiveTlv(givenTagString, givenValueString);
+            serialized = TlvFactory.serialize(tlv);
+            expect(serialized.toString('hex')).to.equal(expectedBuffer.toString('hex'));
+        });
+
+        it('creates primitive with <string>(lowercase)', () => {
+            var givenTagString = '5a';
+            var givenValueString = '90df';
+            var expectedBuffer = new Buffer('5A0290DF', 'hex');
+
+            tlv = TlvFactory.primitiveTlv(givenTagString, givenValueString);
+            serialized = TlvFactory.serialize(tlv);
+            expect(serialized.toString('hex')).to.equal(expectedBuffer.toString('hex'));
+        });
+
+        it('creates primitive with <Buffer>', () => {
+            var givenTagBuffer = new Buffer('5A', 'hex');
+            var givenValueBuffer = new Buffer('90DF', 'hex');
+            var expectedBuffer = new Buffer('5A0290DF', 'hex');
+
+            tlv = TlvFactory.primitiveTlv(givenTagBuffer, givenValueBuffer);
+            serialized = TlvFactory.serialize(tlv);
+            expect(serialized.toString('hex')).to.equal(expectedBuffer.toString('hex'));
+        });
+
+        it('creates primitive with <Buffer>, <string>', () => {
+            var givenTagBuffer = new Buffer('5A', 'hex');
+            var givenValueString = '90df';
+            var expectedBuffer = new Buffer('5A0290DF', 'hex');
+
+            tlv = TlvFactory.primitiveTlv(givenTagBuffer, givenValueString);
+            serialized = TlvFactory.serialize(tlv);
+            expect(serialized.toString('hex')).to.equal(expectedBuffer.toString('hex'));
+        });
+
+        it('creates primitive with <string>, buffer', () => {
+            var givenTagString = '5a';
+            var givenValueBuffer = new Buffer('90DF', 'hex');
+            var expectedBuffer = new Buffer('5A0290DF', 'hex');
+
+            tlv = TlvFactory.primitiveTlv(givenTagString, givenValueBuffer);
+            serialized = TlvFactory.serialize(tlv);
+            expect(serialized.toString('hex')).to.equal(expectedBuffer.toString('hex'));
+        });
+
+        it('creates primitive with no value', () => {
+            var givenTagString = '5A';
+            var expectedBuffer = new Buffer('5A00', 'hex');
+
+            tlv = TlvFactory.primitiveTlv(givenTagString);
+            serialized = TlvFactory.serialize(tlv);
+            expect(serialized.toString('hex')).to.equal(expectedBuffer.toString('hex'));
+        });
+
+        it('fails with invalid tag class', () => {
+            var givenTagString = 'E0';
+
+            var throwFunction = () => {
+                tlv = TlvFactory.primitiveTlv(givenTagString);
+            }
+
+            expect(throwFunction).to.throw;
+        });
+
+        it('fails with invalid data (tag)', () => {
+            var givenNumber = 22;
+
+            var throwFunction = () => {
+                tlv = TlvFactory.primitiveTlv(<any>givenNumber, '');
+            }
+
+            expect(throwFunction).to.throw;
+        });
+
+        it('fails with invalid data (value)', () => {
+            var givenNumber = 22;
+
+            var throwFunction = () => {
+                tlv = TlvFactory.primitiveTlv('', <any>givenNumber);
+            }
+
+            expect(throwFunction).to.throw;
+        });
 
 
-    describe('class', () => {
+    });
+
+    describe('#constructedTlv', () => {
+
+        var tlv: ITlv;
+        var serialized: Buffer;
+
+        it('creates constrcuted with <string>(uppercase)', () => {
+            var givenTagString = 'E0';
+            var givenPayloadTlv = TlvFactory.parse("5A00");
+            var expectedBuffer = new Buffer('E0025A00', 'hex');
+
+            tlv = TlvFactory.constructedTlv(givenTagString, givenPayloadTlv);
+            serialized = TlvFactory.serialize(tlv);
+            expect(serialized.toString('hex')).to.equal(expectedBuffer.toString('hex'));
+        });
+
+        it('creates constructed with <string>(lowercase)', () => {
+            var givenTagString = 'e0';
+            var givenPayloadTlv = TlvFactory.parse("5A00");
+            var expectedBuffer = new Buffer('E0025A00', 'hex');
+
+            tlv = TlvFactory.constructedTlv(givenTagString, givenPayloadTlv);
+            serialized = TlvFactory.serialize(tlv);
+            expect(serialized.toString('hex')).to.equal(expectedBuffer.toString('hex'));
+        });
+
+        it('creates constructed with <buffer>', () => {
+            var givenTagBuffer = new Buffer('E0', 'hex');
+            var givenPayloadTlv = TlvFactory.parse("5A00");
+            var expectedBuffer = new Buffer('E0025A00', 'hex');
+
+            tlv = TlvFactory.constructedTlv(givenTagBuffer, givenPayloadTlv);
+            serialized = TlvFactory.serialize(tlv);
+            expect(serialized.toString('hex')).to.equal(expectedBuffer.toString('hex'));
+        });
+
+        it('creates constructed with no payload', () => {
+            var givenTagBuffer = new Buffer('E0', 'hex');
+            var expectedBuffer = new Buffer('E000', 'hex');
+
+            tlv = TlvFactory.constructedTlv(givenTagBuffer);
+            serialized = TlvFactory.serialize(tlv);
+            expect(serialized.toString('hex')).to.equal(expectedBuffer.toString('hex'));
+        });
+
+        it('creates constrcuted with array payload', () => {
+            var givenTagBuffer = new Buffer('E0', 'hex');
+            var givenPayloadTlv = TlvFactory.parse("5A00");
+            var expectedBuffer = new Buffer('E0025A00', 'hex');
+
+            tlv = TlvFactory.constructedTlv(givenTagBuffer, givenPayloadTlv);
+            serialized = TlvFactory.serialize(tlv);
+            expect(serialized.toString('hex')).to.equal(expectedBuffer.toString('hex'));
+        });
+
+        it('creates constrcuted with single payload', () => {
+            var givenTagBuffer = new Buffer('E0', 'hex');
+            var givenPayloadTlv = TlvFactory.primitiveTlv("5A");
+            var expectedBuffer = new Buffer('E0025A00', 'hex');
+
+            tlv = TlvFactory.constructedTlv(givenTagBuffer, givenPayloadTlv);
+            serialized = TlvFactory.serialize(tlv);
+            expect(serialized.toString('hex')).to.equal(expectedBuffer.toString('hex'));
+        });
+
+        it('fails with invalid payload', () => {
+            var givenTagString = '5a';
+            var givenValueNumber = 22;
+
+            var throwFunction = () => {
+                tlv = TlvFactory.primitiveTlv(givenTagString, <any>givenValueNumber);
+            }
+
+            expect(throwFunction).to.throw;
+        });
+
+        it('fails with invalid tag class', () => {
+            var givenTagString = '5A';
+
+            var throwFunction = () => {
+                tlv = TlvFactory.constructedTlv(givenTagString);
+            }
+
+            expect(throwFunction).to.throw;
+        });
+
+        it('fails with invalid data (tag)', () => {
+            var givenNumber: number = 22;
+
+            var throwFunction = () => {
+                tlv = TlvFactory.constructedTlv(<any>givenNumber, []);
+            }
+
+            expect(throwFunction).to.throw;
+        });
+
+        it('fails with invalid data (value)', () => {
+            var givenNumber: number = 22;
+
+            var throwFunction = () => {
+                tlv = TlvFactory.primitiveTlv('', <any>givenNumber);
+            }
+
+            expect(throwFunction).to.throw;
+        });
+
+
+    });
+
+    describe('#serialize', () => {
+
+        it('serializes primitive', () => {
+            var givenTlv = TlvFactory.primitiveTlv('5A', '0100')
+            var expectedBuffer = tlvGenerator('5A', '02', '0100');
+
+            serialized = TlvFactory.serialize(givenTlv);
+
+            expect(serialized.toString('hex')).to.equal(expectedBuffer.toString('hex'));
+        });
+
+        it('serializes concatenated primitive', () => {
+            var givenTlv = TlvFactory.parse('5A020100570101')
+            var expectedBuffer = Buffer.concat([tlvGenerator('5A', '02', '0100'), tlvGenerator('57', '01', '01')]);
+
+            serialized = TlvFactory.serialize(givenTlv);
+
+            expect(serialized.toString('hex')).to.equal(expectedBuffer.toString('hex'));
+        });
+
+        it('serializes constructed', () => {
+            var givenTlv = TlvFactory.constructedTlv('E0', TlvFactory.primitiveTlv('57'))
+            var expectedBuffer = tlvGenerator('E0', '02', '5700');
+
+            serialized = TlvFactory.serialize(givenTlv);
+
+            expect(serialized.toString('hex')).to.equal(expectedBuffer.toString('hex'));
+        });
+
+        it('serializes concatenated constructed', () => {
+            var givenTlv = TlvFactory.parse('E0025700E0055A01015700')
+            var expectedBuffer = Buffer.concat([tlvGenerator('E0', '02', '5700'), tlvGenerator('E0', '05', '5A01015700')]);
+
+            serialized = TlvFactory.serialize(givenTlv);
+
+            expect(serialized.toString('hex')).to.equal(expectedBuffer.toString('hex'));
+        });
+
+        it('serializes constructed constructed', () => {
+            var givenTlv = TlvFactory.parse('E005E003570101')
+            var expectedBuffer = tlvGenerator('E0', '05', 'E003570101');
+
+            serialized = TlvFactory.serialize(givenTlv);
+            expect(serialized.toString('hex')).to.equal(expectedBuffer.toString('hex'));
+        });
+
+
+        it('fails on wrong data', () => {
+            buffer = new Buffer(0);
+            var throwFunction = () => {
+                serialized = TlvFactory.serialize(<any>buffer);
+            }
+
+            expect(throwFunction).to.throw;
+        });
+
+    });
+
+});
+
+describe('Tlv', () => {
+
+    var tlv: ITlv;
+    describe('#class', () => {
+
+        it('identified universal', () => {
+          tlv = TlvFactory.primitiveTlv('0F', new Buffer(0));
+          expect(tlv.class).to.equal(TlvClass.UNIVERSAL);
+        });
+        it('identified application', () => {
+          tlv = TlvFactory.primitiveTlv('4F', new Buffer(0));
+          expect(tlv.class).to.equal(TlvClass.APPLICATION);
+        });
+        it('identified context-specific', () => {
+          tlv = TlvFactory.primitiveTlv('8F', new Buffer(0));
+          expect(tlv.class).to.equal(TlvClass.CONTEXT_SPECIFIC);
+        });
+        it('identified private', () => {
+          tlv = TlvFactory.primitiveTlv('CF', new Buffer(0));
+          expect(tlv.class).to.equal(TlvClass.PRIVATE);
+        });
+
+    });
+
+    describe('#type', () => {
 
         var tag: ITlv;
-        it('identified class universal', () => {
-          tag = TlvFactory.primitiveTlv('0F', new Buffer(0));
-          expect(tag.class).to.equal(TlvClass.UNIVERSAL);
+        it('identified primitive', () => {
+          tlv = TlvFactory.primitiveTlv('5A', new Buffer(0));
+          expect(tlv.type).to.equal(TlvType.PRIMITIVE);
         });
-        it('identified class application', () => {
-          tag = TlvFactory.primitiveTlv('4F', new Buffer(0));
-          expect(tag.class).to.equal(TlvClass.APPLICATION);
+        it('identified constructed', () => {
+          tlv = TlvFactory.primitiveTlv('E0', new Buffer(0));
+          expect(tlv.type).to.equal(TlvType.CONSTRUCTED);
         });
-        it('identified class context-specific', () => {
-          tag = TlvFactory.primitiveTlv('8F', new Buffer(0));
-          expect(tag.class).to.equal(TlvClass.CONTEXT_SPECIFIC);
-        });
-        it('identified class private', () => {
-          tag = TlvFactory.primitiveTlv('CF', new Buffer(0));
-          expect(tag.class).to.equal(TlvClass.PRIVATE);
-        });
-
     });
 });
