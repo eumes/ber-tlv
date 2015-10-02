@@ -17,10 +17,6 @@ declare module BerTlv{
         value: Buffer;
         items: ITlv[];
     }
-    export class TlvHelper {
-        static typeFromTag(tagBuffer: Buffer): TlvType;
-        static classFromTag(tagBuffer: Buffer): TlvClass;
-    }
 
     export interface IParseError extends Error {
         partialTlv: ITlv[];
