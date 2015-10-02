@@ -154,7 +154,7 @@ var TlvParser = (function () {
     TlvParser.parseValue = function (buffer, length, tag) {
         if (buffer.remaining < length) {
             var missing = length - buffer.remaining;
-            var partialValue = buffer.readBufferRemainig();
+            var partialValue = buffer.readBufferRemaining();
             return new TlvParserResult(partialValue, TlvParserParseError.errorInsufficientValueData(tag, missing));
         }
         var value = buffer.readBuffer(length);
