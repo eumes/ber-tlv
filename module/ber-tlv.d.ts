@@ -17,17 +17,13 @@ declare module BerTlv{
         value: Buffer;
         items: ITlv[];
     }
-    export class TlvHelper {
-        static typeFromTag(tagBuffer: Buffer): TlvType;
-        static classFromTag(tagBuffer: Buffer): TlvClass;
-    }
 
     export interface IParseError extends Error {
         partialTlv: ITlv[];
     }
     export class TlvFactory {
         static primitiveTlv(tag: Buffer | string, value?: Buffer | string): ITlv;
-        static constructedTlv(tag: Buffer | string, items?: ITlv[]): ITlv;
+        static constructedTlv(tag: Buffer | string, items?: ITlv | ITlv[]): ITlv;
         static parse(buffer: Buffer | string): ITlv[];
         static serialize(items: ITlv | ITlv[]): Buffer;
     }

@@ -1,5 +1,6 @@
 #exclude dev/transient/generated files
 node_modules
+dist
 release/*/*-Specs.*
 
 #exlude system files

@@ -41,8 +41,8 @@ var TlvSerializer = (function () {
     TlvSerializer.serializeConstrucedItem = function (item) {
         var serializedItems = [];
         for (var _i = 0, _a = item.items; _i < _a.length; _i++) {
-            var item = _a[_i];
-            var itemBuffer = TlvSerializer.serializeItem(item);
+            var subitem = _a[_i];
+            var itemBuffer = TlvSerializer.serializeItem(subitem);
             serializedItems.push(itemBuffer);
         }
         var serializedItemsBuffer = Buffer.concat(serializedItems);
