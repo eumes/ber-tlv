@@ -1,0 +1,103 @@
+0 info it worked if it ends with ok
+1 verbose cli [ 'node', '/usr/bin/npm', 'publish', '--force' ]
+2 info using npm@3.3.5
+3 info using node@v0.12.7
+4 verbose node symlink /usr/bin/node
+5 warn using --force I sure hope you know what you are doing.
+6 verbose publish [ '.' ]
+7 silly cache add args [ '.', null ]
+8 verbose cache add spec .
+9 silly cache add parsed spec { raw: '.',
+9 silly cache add   scope: null,
+9 silly cache add   name: null,
+9 silly cache add   rawSpec: '.',
+9 silly cache add   spec: '/home/simon/Projects/ber-tlv',
+9 silly cache add   type: 'directory' }
+10 verbose addLocalDirectory /home/simon/.npm/ber-tlv/0.9.0/package.tgz not in flight; packing
+11 info lifecycle ber-tlv@0.9.0~prepublish: ber-tlv@0.9.0
+12 silly lifecycle ber-tlv@0.9.0~prepublish: no script for prepublish, continuing
+13 verbose tar pack [ '/home/simon/.npm/ber-tlv/0.9.0/package.tgz',
+13 verbose tar pack   '/home/simon/Projects/ber-tlv' ]
+14 verbose tarball /home/simon/.npm/ber-tlv/0.9.0/package.tgz
+15 verbose folder /home/simon/Projects/ber-tlv
+16 verbose addLocalTarball adding from inside cache /home/simon/.npm/ber-tlv/0.9.0/package.tgz
+17 silly cache afterAdd ber-tlv@0.9.0
+18 verbose afterAdd /home/simon/.npm/ber-tlv/0.9.0/package/package.json not in flight; writing
+19 verbose afterAdd /home/simon/.npm/ber-tlv/0.9.0/package/package.json written
+20 silly publish { name: 'ber-tlv',
+20 silly publish   version: '0.9.0',
+20 silly publish   description: 'Simple TLV implementation, providing parsing and serialization of TLV encoded data',
+20 silly publish   author: { name: 'Simon Eumes', email: 'simon@sim0n.net' },
+20 silly publish   license: 'MIT',
+20 silly publish   repository: { type: 'git', url: 'git+https://github.com/eumes/ber-tlv.git' },
+20 silly publish   main: './module/ber-tlv.js',
+20 silly publish   typescript: { definition: './module/ber-tlv.d.ts' },
+20 silly publish   scripts: { start: 'gulp', build: 'gulp build', test: 'gulp test' },
+20 silly publish   keywords: [ 'tlv', 'ber-tlv', 'emv', 'typescript' ],
+20 silly publish   devDependencies:
+20 silly publish    { chai: '^2.1.1',
+20 silly publish      del: '^1.2.0',
+20 silly publish      gulp: '^3.9.0',
+20 silly publish      'gulp-mocha': '^2.0.0',
+20 silly publish      'gulp-typescript': '^2.8.0',
+20 silly publish      merge2: '^0.3.6',
+20 silly publish      mocha: '^2.2.1' },
+20 silly publish   dependencies: { 'octet-buffer': '^0.9.0' },
+20 silly publish   readme: '# ber-tlv\n\n[![npm version](https://badge.fury.io/js/ber-tlv.svg)](https://www.npmjs.com/package/ber-tlv)\n[![travis status](https://travis-ci.org/eumes/ber-tlv.svg?branch=develop)](https://travis-ci.org/eumes/ber-tlv)\n\n> Parsing and serializing TLV data\n\nA streamlined library for creating, serializing and parsing TLV encoded data with focus on verbosity.\n\n## Usage\n\n### Importing the Module\n\n```js\n//typescript\nimport { ITlv, TlvType, TlvClass } from \'./node_modules/src/Tlv.ts\';\nimport { TlvFactory, IParseError } from \'./node_modules/src/TlvFactory.ts\';\n\n//javascript\nvar ITlv = require(\'ber-tlv\').ITlv;\nvar TlvType = require(\'ber-tlv\').TlvType;\nvar TlvClass = require(\'ber-tlv\').TlvClass;\nvar TlvFactory = require(\'ber-tlv\').TlvFactory;\nvar IParseError = require(\'ber-tlv\').IParseError;\n```\n\n### The ITlv object\n\n```js\n//some way of getting an actual item (see next paragraph)\nvar tlv = ...;\n//the tag (as hex string)\nvar tag = tlv.tag;\n//the type of the tag (constructed or primitive)\nvar type = tlv.type;\n//the class of the tag (universal, application, context-specific, private)\nvar class = tlv.class;\n\n//in case of a primitive, the value buffer contains the actual payload\nvar buffer = tlv.value;\n//and in case of a constrcuted, the items array contains the pre-parsed sub items\nvar array = tlv.items;\n\n//to convert the type to an actual string use\nvar string = TlvType[tlv.type];\n//and for the class use this\nvar string = TlvClass[tlv.class]\n```\n\n### The TlvFactory\n\n```js\n//creating a new item is straight forward. tag and value can either be <Buffer> or <string> and the value can be omitted.\nvar tlv = TlvFactory.primitiveTlv(tag, value);\n//the same is true for a constructed item. tag can either be <Buffer> or <string> and the value can either be another <ITlv>, <Itlv[]> or simple be omitted.\nvar tlv = TlvFactory.constructedTlv(tag, value);\n//in case an error is encountered, an Error is thrown!\n\n//parsing given data is also a piece of cake. Just provide the <string> or <Buffer> and get the parsed data back :)\nvar tlv[] = TlvFactory.parse(data);\n//in case an error is encountered, an Error is trown! The error has an additional field which contains the items that were parsed before the error was encountered.\nvar tlv[] = error.partialTlv;\n\n//and if you need to serialize your constructed items again, there is also a method for this available. It takes either a <ITlv> or a <ITlv[]> and returns a Buffer.\nvar buffer = TlvFactory.serialize(tlv);\n//in case an error is encountered, an Error is thrown!\n```\n\n## Examples\n\n### Working with High Level Constructors\n```js\n//primitive\nvar tag = \'57\';\nvar value = \'2030001020\'\nvar primitive = TlvFactory.primitiveTlv(tag, value);\n\n//constrcuted\nvar tag = \'E0\';\nvar constructed = TlvFactory.constructedTlv(tag, primitive);\n```\n\n### Parsing a String\n```js\n//primitives\nvar string = \'570101\';\nvar tlv = [];\ntry {\n    tlv = TlvFactory.parse(string);\n}\ncatch (error){\n    //we use the partially parsed tlv and show an error message\n    tlv = error.partialTlv;\n    console.log(error.name);\n    console.log(error.message);\n}\n```\n\n## Development\n\n### Prerequisites\n\nThe project is build on `Typescript` for strong javascript typing and uses `DefinitelyTyped` for downloading typescript definitions for development dependencies. In the end, everything is glued together by `Gulp`.\n\n```bash\n//global dependencies\nnpm install gulp -g\nnpm install typescript -g\nnpm install tsd -g\n//and now the local dependencies\nnpm install\n```\n\n### Build\n\n```bash\ngulp build\n```\n\n> Note: The ts.d file for the resulting javascript is currently created manually after the build.\n\n### Test\n\n```bash\ngulp test\n```\n\n## License\n```\nThe MIT License (MIT)\n\nCopyright (c) 2015 Simon Eumes\n\nPermission is hereby granted, free of charge, to any person obtaining a copy\nof this software and associated documentation files (the "Software"), to deal\nin the Software without restriction, including without limitation the rights\nto use, copy, modify, merge, publish, distribute, sublicense, and/or sell\ncopies of the Software, and to permit persons to whom the Software is\nfurnished to do so, subject to the following conditions:\n\nThe above copyright notice and this permission notice shall be included in all\ncopies or substantial portions of the Software.\n\nTHE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR\nIMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,\nFITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE\nAUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER\nLIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,\nOUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE\nSOFTWARE.\n```\n',
+20 silly publish   readmeFilename: 'README.md',
+20 silly publish   gitHead: '2b092ed243416a0c8ea3e022d5bd0220541aec33',
+20 silly publish   bugs: { url: 'https://github.com/eumes/ber-tlv/issues' },
+20 silly publish   homepage: 'https://github.com/eumes/ber-tlv#readme',
+20 silly publish   _id: 'ber-tlv@0.9.0',
+20 silly publish   _shasum: '243067da6a67a109a04bc0c20e0ca2df124efab0',
+20 silly publish   _from: '.' }
+21 verbose getPublishConfig undefined
+22 silly mapToRegistry name ber-tlv
+23 silly mapToRegistry using default registry
+24 silly mapToRegistry registry https://registry.npmjs.org/
+25 silly mapToRegistry uri https://registry.npmjs.org/ber-tlv
+26 verbose publish registryBase https://registry.npmjs.org/
+27 silly publish uploading /home/simon/.npm/ber-tlv/0.9.0/package.tgz
+28 verbose request uri https://registry.npmjs.org/ber-tlv
+29 verbose request sending authorization for write operation
+30 info attempt registry request try #1 at 21:44:22
+31 verbose request using bearer token for auth
+32 verbose request id fe06f0d5546fbbff
+33 http request PUT https://registry.npmjs.org/ber-tlv
+34 http 403 https://registry.npmjs.org/ber-tlv
+35 verbose headers { 'content-type': 'application/json',
+35 verbose headers   'cache-control': 'max-age=60',
+35 verbose headers   'content-length': '95',
+35 verbose headers   'accept-ranges': 'bytes',
+35 verbose headers   date: 'Fri, 02 Oct 2015 19:44:24 GMT',
+35 verbose headers   via: '1.1 varnish',
+35 verbose headers   connection: 'keep-alive',
+35 verbose headers   'x-served-by': 'cache-ams4131-AMS',
+35 verbose headers   'x-cache': 'MISS',
+35 verbose headers   'x-cache-hits': '0',
+35 verbose headers   'x-timer': 'S1443815063.399628,VS0,VE1180' }
+36 verbose request invalidating /home/simon/.npm/registry.npmjs.org/ber-tlv on PUT
+37 error publish Failed PUT 403
+38 verbose stack Error: "You cannot publish over the previously published version 0.9.0." : ber-tlv
+38 verbose stack     at makeError (/usr/lib/node_modules/npm/node_modules/npm-registry-client/lib/request.js:264:12)
+38 verbose stack     at CachingRegistryClient.<anonymous> (/usr/lib/node_modules/npm/node_modules/npm-registry-client/lib/request.js:252:14)
+38 verbose stack     at Request._callback (/usr/lib/node_modules/npm/node_modules/npm-registry-client/lib/request.js:172:14)
+38 verbose stack     at Request.self.callback (/usr/lib/node_modules/npm/node_modules/request/request.js:198:22)
+38 verbose stack     at Request.emit (events.js:110:17)
+38 verbose stack     at Request.<anonymous> (/usr/lib/node_modules/npm/node_modules/request/request.js:1063:14)
+38 verbose stack     at Request.emit (events.js:129:20)
+38 verbose stack     at IncomingMessage.<anonymous> (/usr/lib/node_modules/npm/node_modules/request/request.js:1009:12)
+38 verbose stack     at IncomingMessage.emit (events.js:129:20)
+38 verbose stack     at _stream_readable.js:908:16
+39 verbose statusCode 403
+40 verbose pkgid ber-tlv
+41 verbose cwd /home/simon/Projects/ber-tlv
+42 error Linux 3.19.0-30-generic
+43 error argv "node" "/usr/bin/npm" "publish" "--force"
+44 error node v0.12.7
+45 error npm  v3.3.5
+46 error code E403
+47 error "You cannot publish over the previously published version 0.9.0." : ber-tlv
+48 error If you need help, you may report this error at:
+48 error     <https://github.com/npm/npm/issues>
+49 verbose exit [ 1, true ]
