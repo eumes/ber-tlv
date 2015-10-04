@@ -95,8 +95,16 @@ export class TlvParser {
         var valueParsingResult: TlvParserResult<Buffer> = this.parseValue(buffer, length, tagBuffer);
         var value: Buffer = valueParsingResult.result;
         if (valueParsingResult.error != null){
-            var tlvItem: ITlv = TlvFactory.primitiveTlv(tagBuffer, value);
-            return new TlvParserResult<ITlv>(tlvItem, valueParsingResult.error);
+            if (type === TlvType.CONSTRUCTED){
+                //for constructed items we do not have any subitems, so we ignore them for now
+                var tlvItem: ITlv = TlvFactory.constructedTlv(tagBuffer);
+                return new TlvParserResult<ITlv>(tlvItem, valueParsingResult.error);
+            }
+            else {
+                //lets just return the data we have parsed so far
+                var tlvItem: ITlv = TlvFactory.primitiveTlv(tagBuffer, value);
+                return new TlvParserResult<ITlv>(tlvItem, valueParsingResult.error);
+            }
         }
         //console.log('got value: ' + value.toString('hex'));
 
