@@ -87,8 +87,14 @@ var TlvParser = (function () {
         var valueParsingResult = this.parseValue(buffer, length, tagBuffer);
         var value = valueParsingResult.result;
         if (valueParsingResult.error != null) {
-            var tlvItem = TlvFactory_1.TlvFactory.primitiveTlv(tagBuffer, value);
-            return new TlvParserResult(tlvItem, valueParsingResult.error);
+            if (type === Tlv_1.TlvType.CONSTRUCTED) {
+                var tlvItem = TlvFactory_1.TlvFactory.constructedTlv(tagBuffer);
+                return new TlvParserResult(tlvItem, valueParsingResult.error);
+            }
+            else {
+                var tlvItem = TlvFactory_1.TlvFactory.primitiveTlv(tagBuffer, value);
+                return new TlvParserResult(tlvItem, valueParsingResult.error);
+            }
         }
         if (type === Tlv_1.TlvType.CONSTRUCTED) {
             var subParsingResult = this.parseItems(value);
